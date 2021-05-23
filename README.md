@@ -5,8 +5,8 @@
 > life-cycle management are WIH.
 
 Carnet is a small tool that imposes additional security constraints 
-on Rust's official package manager, Cargo. It aims to prevent or 
-otherwise limit the damage malicious crates can cause. 
+on Rust's official package manager, Cargo. This tool aims to prevent 
+or otherwise limit the damage malicious crates can cause. 
                      
 Carnet imposes two types of security constraints on Cargo:
     

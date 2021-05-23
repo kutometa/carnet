@@ -4,6 +4,12 @@ This file documents noteworthy changes between each version of
 Carnet.
 
 
+
+### Noteworthy changes in v0.3.5 (2021-05-23)
+
+This is a minor release that fixes minor issues with the last 
+release.
+
 ### Noteworthy changes in v0.3.4 (2021-05-23)
 
 This release contains last minute changes prior to project 

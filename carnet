@@ -3,13 +3,14 @@
 
        PROJECT_NAME="carnet"
       PROJECT_TITLE="Carnet: Bureaucracy for Cargo" 
-    PROJECT_VERSION="0.3.4"
+    PROJECT_VERSION="0.3.5"
        PROJECT_DATE="2021-05-21"
           COPYRIGHT="Copyright © 2021 Kutometa SPC, Kuwait"
         DESCRIPTION="Carnet is a small tool that imposes additional 
                      security constraints on Rust's official package 
-                     manager, Cargo. It aims to prevent or otherwise 
-                     limit the damage malicious crates can cause."                  
+                     manager, Cargo. This tool aims to prevent or 
+                     otherwise limit the damage malicious crates can
+                     cause."                  
     COPYRIGHT_BLURB="
     $PROJECT_NAME $PROJECT_VERSION
     $COPYRIGHT 
