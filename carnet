@@ -3,14 +3,13 @@
 
        PROJECT_NAME="carnet"
       PROJECT_TITLE="Carnet: Bureaucracy for Cargo" 
-    PROJECT_VERSION="0.3.3"
+    PROJECT_VERSION="0.3.4"
        PROJECT_DATE="2021-05-21"
           COPYRIGHT="Copyright © 2021 Kutometa SPC, Kuwait"
         DESCRIPTION="Carnet is a small tool that imposes additional 
                      security constraints on Rust's official package 
-                     manager, Cargo. This tool aims to prevent or 
-                     otherwise limit the damage malicious crates can 
-                     cause."                  
+                     manager, Cargo. It aims to prevent or otherwise 
+                     limit the damage malicious crates can cause."                  
     COPYRIGHT_BLURB="
     $PROJECT_NAME $PROJECT_VERSION
     $COPYRIGHT 
@@ -177,7 +176,7 @@ ${BOLD-}USAGE${RESET-}
 
     carnet [OPTIONS] [CARGO COMMANDS & OPTIONS]
     carnet [OPTIONS] [CARNET COMMAND]
-  
+
 ${BOLD-}GENERAL OPTIONS${RESET-}
 
     --carnet:config-dir=...         Override default configuration 
@@ -207,8 +206,7 @@ ${BOLD-}SANDBOX OPTIONS${RESET-}
 ${BOLD-}AUTHENTICATION OPTIONS${RESET-}
 
     --carnet:disable-verification   Disable automatic verification.
-                                    See carnet:edit and carnet:done.
-  
+                                    See carnet:edit and carnet:done.  
   
 ${BOLD-}COMMANDS${RESET-}
 
@@ -216,6 +214,7 @@ ${BOLD-}COMMANDS${RESET-}
     carnet:sandbox-run   Run arbitrary commands in sandbox.
     carnet:seal          Seal current crate.
     carnet:verify        Verify current crate.
+    carnet:files         View all files that get sealed.
     carnet:own           Set origin of current as local.
     carnet:disown        Set origin of current crate as foreign.
     carnet:distrust      Unregister the current crate from cache.
@@ -1203,7 +1202,7 @@ locate_known_crate_from_the_inside_and_set_up_global_variables() {
             break
         fi
         if [[ "$( realpath -- "$KNOWN_CRATE_PATH" )" == "/" ]]; then
-            debug "Could not find Cargo.toml in this directory or any of its parents.\n"
+            debug "Could not find a crate in this directory or any of its parents.\n"
             unset KNOWN_CRATE_PATH
             unset KNOWN_CRATE_PATH_HASH
             unset KNOWN_CRATE_ORIGIN
@@ -1430,65 +1429,62 @@ for arg in "$@"; do
     elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--rw-paths= ]]; then
         SANDBOX_RW_PATHS="${arg:11}"
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:help" ]] || [[ "$arg" == "$PROJECT_NAME:help" ]] ) ; then
-        COMMAND="help"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "--$PROJECT_NAME:help" ]] || [[ "$arg" == "$PROJECT_NAME:help" ]] ) ; then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="help"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--help" ]] || [[ "$arg" == "help" ]] || [[ "$arg" == "-h" ]]) ; then
-        COMMAND="cargo-help"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "--help" ]] || [[ "$arg" == "help" ]] || [[ "$arg" == "-h" ]]) ; then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="cargo-help"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:sandbox-run" ]] || [[ "$arg" == "sandbox-run" ]] ); then
-        COMMAND="sandbox-run"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:sandbox-run" ]] || [[ "$arg" == "sandbox-run" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="sandbox-run"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:seal" ]] || [[ "$arg" == "seal" ]] ); then
-        COMMAND="seal"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:seal" ]] || [[ "$arg" == "seal" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="seal"; fi
     
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:disable" ]] || [[ "$arg" == "disable" ]] ); then
-        COMMAND="disable"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:disable" ]] || [[ "$arg" == "disable" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="disable"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:enable" ]] || [[ "$arg" == "enable" ]] ); then
-        COMMAND="enable"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:enable" ]] || [[ "$arg" == "enable" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="enable"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:verify" ]] || [[ "$arg" == "verify" ]] ); then
-        COMMAND="verify"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:verify" ]] || [[ "$arg" == "verify" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="verify"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:owners" ]] || [[ "$arg" == "owners" ]] ); then
-        COMMAND="list-owners"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:owners" ]] || [[ "$arg" == "owners" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="list-owners"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:files" ]] || [[ "$arg" == "files" ]] ); then
-        COMMAND="list-seal-files"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:files" ]] || [[ "$arg" == "files" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="list-seal-files"; fi
         
-    #elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:bash-embedable" ]] || [[ "$arg" == "bash-embedable" ]] ); then
-    #    COMMAND="generate-bash-embedable"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:own" ]] || [[ "$arg" == "own" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="own"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:own" ]] || [[ "$arg" == "own" ]] ); then
-        COMMAND="own"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:disown" ]] || [[ "$arg" == "disown" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="disown"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:disown" ]] || [[ "$arg" == "disown" ]] ); then
-        COMMAND="disown"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:distrust" ]] || [[ "$arg" == "distrust" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="distrust"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:distrust" ]] || [[ "$arg" == "distrust" ]] ); then
-        COMMAND="distrust"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:init" ]] || [[ "$arg" == "init" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="init"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:init" ]] || [[ "$arg" == "init" ]] ); then
-        COMMAND="init"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:uninit" ]] || [[ "$arg" == "uninit" ]] ) ; then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="uninit"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:uninit" ]] || [[ "$arg" == "uninit" ]] ) ; then
-        COMMAND="uninit"
-        
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:identity" ]] || [[ "$arg" == "identity" ]] ); then
-        COMMAND="identity"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:identity" ]] || [[ "$arg" == "identity" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="identity"; fi
     
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:version" ]] || [[ "$arg" == "--version" ]] ); then
-        COMMAND="version"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "--$PROJECT_NAME:version" ]] || [[ "$arg" == "--version" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="version"; fi
     
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:legal" ]] || [[ "$arg" == "--legal" ]] ); then
-        COMMAND="legal"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "--$PROJECT_NAME:legal" ]] || [[ "$arg" == "--legal" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="legal"; fi
         
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:edit" ]] || [[ "$arg" == "edit" ]] ); then
-        COMMAND="edit"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:edit" ]] || [[ "$arg" == "edit" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="edit"; fi
     
-    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:done" ]] || [[ "$arg" == "done" ]] ); then
-        COMMAND="done"
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ! [[ "${COMMAND}" ]] && ( [[ "$arg" == "$PROJECT_NAME:done" ]] || [[ "$arg" == "done" ]] ); then
+        if ! [[ "${COMMAND}" ]]; then COMMAND="done"; fi
         
     elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" == "--$PROJECT_NAME:end" ]]; then
         END_OF_OPTIONS="yes"
@@ -1515,7 +1511,9 @@ if ! [[ "${CARGO_PATH-}" ]]; then
     }
 fi
 
-if [[ "$COMMAND" == "cargo-help" ]]; then
+debug "Carnet command selected was '$COMMAND'. If empty, this means that this is a direct cargo pass though.";
+
+if [[ "$COMMAND" == "cargo-help" ]] || [[ "$#" -eq 0 ]]; then
     # TODO sandbox 
     "$CARGO_PATH" "help"
     printf "%s\n\n" "See '$PROJECT_NAME $PROJECT_NAME:help' or '$PROJECT_NAME --$PROJECT_NAME:help' for more information about options and commands that are specific to carnet."
@@ -1738,12 +1736,15 @@ if [[ "$COMMAND" ]]; then
         KNOWN_CRATE_PATH="."
         locate_known_crate_from_the_inside_and_set_up_global_variables
         crate_root="${UNHANDLED_NON_OPTIONS[0]:-.}"
-        if ! [[ -f "$crate_root/Cargo.toml" ]]; then
-            fatal "'$crate_root' doesn't seem to be a rust crate (no Cargo.toml)"
+        if ! [[ -d "$crate_root" ]]; then
+            fatal "'$crate_root' is not a directory"
         fi
-        initialize_crate "${UNHANDLED_NON_OPTIONS[0]:-.}"
-        trust_crate "${UNHANDLED_NON_OPTIONS[0]:-.}" 
-        own_crate "${UNHANDLED_NON_OPTIONS[0]:-.}"
+        if ! [[ -f "$crate_root/Cargo.toml" ]]; then
+            warn "'$crate_root' doesn't seem to be a rust crate (no Cargo.toml). Proceeding anyway."
+        fi
+        initialize_crate "$crate_root"
+        trust_crate "$crate_root" 
+        own_crate "$crate_root"
     elif [[ "$COMMAND" == "uninit" ]]; then
         KNOWN_CRATE_PATH="."
         locate_known_crate_from_the_inside_and_set_up_global_variables
@@ -1821,15 +1822,16 @@ else
         sandbox "$CARGO_PATH" "${FILTERED_ARGS[@]}" || exit "$?"
         
         if ! [[ "${UNHANDLED_NON_OPTIONS[1]-}" ]] || ! [[ -f "${UNHANDLED_NON_OPTIONS[1]}/Cargo.toml" ]]; then 
-            fatal "Your new crate has been successfully setup by cargo, \
-                   but carnet could not initialize it automatically because \
-                   it couldn't find the new directory \
-                   '${UNHANDLED_NON_OPTIONS[1]-}'. You can initialize your \
-                   crate manually by running $PROJECT_NAME carnet:init inside your crate."
+            fatal "Carnet has failed to setup your new crate properly. You can try to use cargo directly and then run $PROJECT_NAME carnet:init manually inside your new crate. Please consider reporting this issue if you can reproduce it."
+             Please consider reporting this issue.
         fi
         initialize_crate "${UNHANDLED_NON_OPTIONS[1]}"
         trust_crate "${UNHANDLED_NON_OPTIONS[1]}"
         own_crate "${UNHANDLED_NON_OPTIONS[1]}"
+        
+        if ! [[ "${UNHANDLED_NON_OPTIONS[1]-}" ]] || ! [[ -d "${UNHANDLED_NON_OPTIONS[1]}/.carnet" ]]; then 
+            fatal "Carnet has failed to setup your new crate properly. Try to run $PROJECT_NAME carnet:init manually inside your new crate. Please consider reporting this issue if you can reproduce it."
+        fi
     elif [[ "${UNHANDLED_NON_OPTIONS[0]-}" == "version" ]]; then
         echo "$PROJECT_NAME $PROJECT_VERSION ($PROJECT_DATE NCA)"
         sandbox "$CARGO_PATH" version
@@ -1838,7 +1840,7 @@ else
         printf "%s\n\n" "See '$PROJECT_NAME $PROJECT_NAME:help' or '$PROJECT_NAME --$PROJECT_NAME:help' for more information about the options and commands that are specific to Carnet."
     else
         if ! [[ "${KNOWN_CRATE_STATE-}" ]] ||  [[ "$KNOWN_CRATE_STATE" != "found" ]]; then
-            fatal "Could not find a registered crate in '$PWD' or any parent directory"
+            fatal "Could not find a registered crate in current directory or any parent directory.\n See 'carnet new' and 'carnet init' commands."
         fi
         if [[ "$DISABLE_AUTOVERIFICATION" != "yes" ]]; then
             verify

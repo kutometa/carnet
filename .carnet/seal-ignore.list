@@ -1,0 +1,8 @@
+/\.git/
+/\.git$
+^\./target/
+^\./\.carnet/seal/
+/\.private-staging-mountpoint/
+/target/
+/Cargo.lock
+

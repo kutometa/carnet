@@ -103,7 +103,7 @@ else
     for case in "cases/"*; do
         case_name="$(basename "$case")"
         if [[ "${case_name::12}" == "0000-ignored" ]] && [[ "${TEST_IGNORED-}" == "" ]]; then
-            step "ignored" "$case_name"
+            step "ignored" "$case_name (Set env TEST_IGNORED to 'yes' to test)"
         else
             run_case "$case"
         fi
