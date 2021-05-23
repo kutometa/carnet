@@ -1,0 +1,1854 @@
+#!/bin/bash
+
+
+       PROJECT_NAME="carnet"
+      PROJECT_TITLE="Carnet: Bureaucracy for Cargo" 
+    PROJECT_VERSION="0.3.3"
+       PROJECT_DATE="2021-05-21"
+          COPYRIGHT="Copyright © 2021 Kutometa SPC, Kuwait"
+        DESCRIPTION="Carnet is a small tool that imposes additional 
+                     security constraints on Rust's official package 
+                     manager, Cargo. This tool aims to prevent or 
+                     otherwise limit the damage malicious crates can 
+                     cause."                  
+    COPYRIGHT_BLURB="
+    $PROJECT_NAME $PROJECT_VERSION
+    $COPYRIGHT 
+
+    Unless otherwise expressly stated, this work and all related 
+    material are made available to you under the terms of version 3 
+    of the GNU Lesser General Public License (hereinafter, the 
+    LGPL-3.0) and the following supplemental terms:
+
+    1. This work must retain all legal notices. These notices must 
+       not be altered or truncated in any way.
+
+    2. The origin of any derivative or modified versions of this 
+       work must not be presented in a way that may mislead a 
+       reasonable person into mistaking the derive work to originate 
+       from Kutometa or the authors of this work.
+
+    3. Derivative or modified versions of this work must be clearly 
+       and easily distinguishable from the original work by a 
+       reasonable person.
+       
+    4. Unless express permission is granted in writing, The name of 
+       the original work may not be used within the name of any 
+       derivative or modified version of the work.
+
+    5. Unless express permission is granted in writing, Trade names, 
+       trademarks, and service marks used in this work may not be 
+       included in any derivative or modified versions of this work.
+       
+    6. Unless express permission is granted in writing, the names and
+       trademarks of Kutometa and other right holders may not be used
+       to endorse derivative or modified versions of this work.
+
+    7. The licensee must defend, indemnify, and hold harmless 
+       Kutometa and authors of this software from any and all 
+       actions, claims, judgments, losses, penalties, liabilities, 
+       damages, expenses, demands, fees (including, but not limited 
+       to, reasonable legal and other professional fees), taxes, and 
+       cost that result from or in connection with any liability 
+       imposed on Kutometa or other authors of this software as a 
+       result of the licensee conveying this work or a derivative 
+       thereof with contractual assumptions of liability to a third 
+       party recipient.
+
+    Unless expressly stated otherwise or required by applicable law, 
+    this work is provided AS-IS with NO WARRANTY OF ANY KIND, 
+    INCLUDING  THE  WARRANTY  OF MERCHANTABILITY AND FITNESS FOR A
+    PARTICULAR PURPOSE. Use this work at your own risk.
+
+    This license agreement is governed by and is construed in 
+    accordance with the laws of the state of Kuwait. You must submit 
+    all disputes arising out of or in connection with this work to 
+    the exclusive jurisdiction of the courts of Kuwait.
+
+    You should have received a copy of the LGPL-3.0 along with this 
+    program; if not, visit www.ka.com.kw/en/legal, write to 
+    legal@ka.com.kw, or write to Kutometa SPC, 760 SAFAT 13008, 
+    Kuwait.
+
+"
+
+set -euH
+set -o pipefail
+
+HASH_ALGORITHMS=(\
+    "sha256"\
+    "sha384"\
+)
+
+
+#exec 59>/tmp/logszz
+#export BASH_XTRACEFD=59
+#set -x
+
+if [[ -t 0 ]] && [[ -t 1 ]] && [[ -t 2 ]]; then
+    RED="\e[1;31m"
+    GREEN="\e[1;32m"
+    YELLOW="\e[1;33m"
+    WEIRD="\e[1;44m"
+    DIM="\e[2m"
+    BOLD="\e[1m"
+    RESET="\e[0m"
+fi
+
+EXITING="no"
+at_exit_callback() {
+    if [[ "$EXITING" != "yes" ]]; then
+        if [[ "${EXITING_MESSAGE-}" != "yes" ]]; then
+            debug "crashing.."
+            printf "${RED-}A problem occurred and $PROJECT_NAME needs to exit in an unintended way. Specified operations may not have completed correctly or may have been left in an inconsistent state. Please report this issue.${RESET-}\n" 1>&2
+            EXITING_MESSAGE="yes"
+        fi
+        builtin exit 108
+    fi
+}
+trap at_exit_callback EXIT TERM INT
+
+exit() {
+    EXITING="yes"
+    debug "exiting properly with exit $*."
+    builtin exit "$@"
+}
+
+step_message() {
+    printf "${GREEN-}%12s${RESET-} %s\n" "$1" "$2" 1>&2
+}
+
+fail() {
+    printf "\r${RED-}%s${RESET-} %s\n" "$1" "$2" 1>&2
+    exit 107
+}
+
+ignored_step_message() {
+    printf "${YELLOW-}%12s${RESET-} %s\n" "$1" "$2" 1>&2
+}
+
+fatal() {
+    printf "${RED-}error${RESET-}${BOLD-}:${RESET-} ${DIM-} -- $PROJECT_NAME -- ${RESET-} $*\n" 1>&2
+    exit 107
+}
+
+warn() {
+    printf "${YELLOW-}warning${RESET-}${BOLD-}:${RESET-} ${DIM-} -- $PROJECT_NAME -- ${RESET-} $*\n" 1>&2
+}
+
+debug() {
+    if [[ "${DEBUG-}" == "yes" ]]; then
+        printf "${DIM-}verbose:  -- $PROJECT_NAME --  $*${RESET-}\n" 1>&2
+    fi
+}
+
+
+check_installed() {
+    if ! hash "$1" > /dev/null 2>&1 || ! which "$1" > /dev/null 2>&1; then
+        echo "An error occurred: The program '$1' is needed by $PROJECT_NAME, but that program wasn't found on this system."
+        if [[ -x "/usr/lib/command-not-found" ]]; then
+            /usr/lib/command-not-found "$1"
+        else
+            echo "It should be available for installation through your system's software repositories."
+        fi
+        exit 108
+    fi
+}
+
+check_installed "bwrap"
+check_installed "printf"
+check_installed "realpath"
+check_installed "id"
+check_installed "openssl"
+check_installed "sha384sum"
+check_installed "sha256sum"
+check_installed "comm"
+check_installed "sort"
+check_installed "uniq"
+check_installed "tr"
+check_installed "sed"
+check_installed "cat"
+check_installed "tcc"
+
+
+HELP="${BOLD-}$(echo "${PROJECT_TITLE}" | tr '[:lower:]' '[:upper:]')${RESET-}
+
+${BOLD-}USAGE${RESET-}
+
+    carnet [OPTIONS] [CARGO COMMANDS & OPTIONS]
+    carnet [OPTIONS] [CARNET COMMAND]
+  
+${BOLD-}GENERAL OPTIONS${RESET-}
+
+    --carnet:config-dir=...         Override default configuration 
+                                    directory.
+    --carnet:end                    Stop processing Carnet flags and 
+                                    commands.
+    --carnet:verbose                Show debugging messages.
+    --carnet:version                Show version information and exit.
+    --carnet:legal                  Show legal information and exit.
+    --carnet:help                   Show this help message and exit.
+    
+${BOLD-}SANDBOX OPTIONS${RESET-}
+
+    --carnet:disable-sandbox        Bypass sandboxing completely.
+    --carnet:unsandbox-filesystem   Allow normal filesystem access.
+    --carnet:unsandbox-processes    Allow normal access to processes
+                                    and IPC.
+    --carnet:unsandbox-network      Allow normal network access.
+    --carnet:unsandbox-session      Do not sandbox session.
+    --carnet:unsandbox-cargo-home   Allow read-write access to 
+                                    cargo's home directory.
+    --carnet:ro-paths=...           Allow read-only access to colon-
+                                    separated list of paths.
+    --carnet:rw-paths=...           Allow read-write access to colon-
+                                    separated list of paths.
+    
+${BOLD-}AUTHENTICATION OPTIONS${RESET-}
+
+    --carnet:disable-verification   Disable automatic verification.
+                                    See carnet:edit and carnet:done.
+  
+  
+${BOLD-}COMMANDS${RESET-}
+
+    carnet:help          Show this help message and exit.
+    carnet:sandbox-run   Run arbitrary commands in sandbox.
+    carnet:seal          Seal current crate.
+    carnet:verify        Verify current crate.
+    carnet:own           Set origin of current as local.
+    carnet:disown        Set origin of current crate as foreign.
+    carnet:distrust      Unregister the current crate from cache.
+    carnet:init          Initialize existing cargo crate. 
+    carnet:uninit        Uninitialize and unregister current crate.
+                         
+    ${BOLD-}CONFIGURATION SETTINGS${RESET-}
+    
+    carnet:enable        Set a persistent configuration setting.
+    carnet:disable       Unset a persistent configuration setting.
+    
+    ${BOLD-}SESSION MANAGEMENT${RESET-}
+    
+    carnet:edit          Temporarily suspend automatic verification.
+    carnet:done          Resume automatic verification.
+
+
+    ${BOLD-}IMPORTANT NOTE${RESET-}: Carnet is pre-alpha software. Sandboxing works. 
+    Crate authentication is not ready yet. Identity and key life-
+    cycle management are WIH.
+    
+
+${BOLD-}INTRODUCTION${RESET-}
+
+$(printf "${DESCRIPTION}" | tr -d '\n' | sed -E 's/ +/ /g' | fold -sw 66 | sed -E 's/^/    /g')
+                     
+    Carnet imposes two types of security constraints on Cargo:
+    
+        1. It can isolate Cargo to a separate system-enforced 
+           sandbox, only allowing access to a limited subset of 
+           system resources.
+       
+        2. It can authenticate crates before allowing Cargo to 
+           operate on them. (This feature is incomplete and should 
+           not be used yet.)
+    
+    Carnet can be used in place of Cargo, transparently accepting all
+    its arguments:
+    
+        ${DIM-}carnet test${RESET-}
+        ${DIM-}carnet build --release${RESET-}
+    
+    In both the commands above, Carnet will first verify the 
+    authenticity of the crate and then run the corresponding cargo 
+    command in a restrictive sandbox (unless configured otherwise). 
+    This sandbox prevents Cargo from accessing the network, most of 
+    the user's home directory, most of the filesystem, and so on by
+    default.
+    
+    Sandbox restrictions can be relaxed easily or even disabled
+    entirely by passing the appropriate flag to Carnet:
+    
+        ${DIM-}carnet --unsandbox-network     ...${RESET-}
+        ${DIM-}carnet --unsandbox-cargo-home  ...${RESET-}
+        ${DIM-}carnet --unsandbox-processes   ...${RESET-}
+        ${DIM-}carnet --unsandbox-session     ...${RESET-}
+        ${DIM-}carnet --unsandbox-filesystem  ...${RESET-}
+        ${DIM-}... and so on.${RESET-}
+    
+    In addition to general flags that act on entire resource classes,
+    Carnet can also expose individual files and directories within 
+    the sandbox via the flags '--carnet:ro-paths' and 
+    '--carnet:rw-paths'.
+    
+    To avoid ambiguity, flags intended for Carnet can be prefixed 
+    with 'carnet:' while flags intend for Cargo can be prefixed with 
+    'cargo:'. If both Carnet and Cargo accept the same flag and 
+    prefixes are not used, the handling of this flag is unspecified. 
+    The following example illustrates the use of both prefixes:
+    
+        ${DIM-}carnet --carnet:unsandbox-network test --cargo:release${RESET-}
+    
+    Both the sandboxing of Cargo and the automatic verification of 
+    crates can be disabled, for a single invocation or persistently, 
+    through the use of the appropriate flag or by disabling the 
+    feature in Carnet's configuration settings:
+    
+        ${DIM-}carnet --disable-sandbox       ...${RESET-}
+        ${DIM-}carnet --disable-verification  ...${RESET-}
+        
+        ${DIM-}carnet disable sandbox${RESET-}
+        ${DIM-}carnet disable verification${RESET-}
+    
+    ${BOLD-}Sandboxing${RESET-}
+    
+    By default, Carnet's sandbox restricts Cargo in the following 
+    ways:
+      
+      - No network access
+      - Separate process/IPC space
+      - Read-only access to the following directories:
+        - '/etc'
+        - '/bin'
+        - '/lib'
+        - '/lib64'
+        - '/sbin'
+        - '/usr'
+      - Read-Write access to crate root
+      - Read-Write access to a private '/tmp'
+      
+    You can choose to relax these restrictions partially or fully by
+    using the '--unsandbox-*' and '--*-paths' families of flags.
+    
+    You can explore how Cargo \"sees\" its environment from within 
+    the sandbox via sandbox-run:
+    
+        ${DIM-}carnet ... sandbox-run${RESET-}
+        ${DIM-}(i.e. carnet --unsandbox-session sandbox-run bash)${RESET-}
+    
+    ${BOLD-}Identities (Unstable)${RESET-}
+    
+    Carnet uses Identities to authenticate crates. An Identity is a 
+    set of basic information about a natural, legal, or fictitious 
+    person coupled with a single public cryptographic key. One person
+    can have multiple identities at the same time. Similarly, crates 
+    can be signed by multiple identities at the same time. 
+    
+    Identities are meant to be ephemeral. They are designed to be 
+    trivially generatable, and to be introduced and blacklisted as 
+    developers join projects and leave them. Blacklisting an identity 
+    does not carry negative connotations by itself; blacklisting 
+    simply implies that the identity should no longer be \"trusted\" 
+    when verifying crates.
+
+    Identities provide basic information to help users differentiate 
+    between trusted keys. Because this information is not verified 
+    in any way, a verified crate cannot provide any assurances about 
+    the person who signed it. The only 
+    assurance it can provide is that whoever signed the crate had 
+    access to the identity's private key. Carnet Identities are not 
+    designed to protect against the impersonation of 
+    others. 
+
+    The basic information identities provide is:
+
+        1. Name (required):   The name or the person using the 
+                              identity.
+        2. Email (required):  An email address that can be used 
+                              to contact this person.
+        3. Organization:      The organization of which this 
+                              person is member.
+        4. Country:           The legal jurisdiction under which
+                              this person operates.
+                              
+    When generating a new identity, Carnet attempts to obtain this 
+    information by looking at various sources in the order described 
+    bellow:
+
+        ${BOLD-}Identity Name:${RESET-}
+  
+            CARNET_PUBLISHER_NAME           (environment variable)
+            CARGO_NAME                      (environment variable)
+            GIT_AUTHOR_NAME                 (environment variable)
+            GIT_COMMITTER_NAME              (environment variable)
+            user.name                       (git config)
+            USER                            (environment variable)
+            USERNAME                        (environment variable)
+            NAME                            (environment variable)
+      
+        ${BOLD-}Identity Email:${RESET-}
+      
+            CARNET_PUBLISHER_EMAIL          (environment variable)
+            CARGO_EMAIL                     (environment variable)
+            GIT_AUTHOR_EMAIL                (environment variable)
+            GIT_COMMITTER_EMAIL             (environment variable)
+            user.email                      (git config)
+            EMAIL                           (environment variable)
+      
+        ${BOLD-}Identity Organization:${RESET-}
+          
+            CARNET_PUBLISHER_ORG            (environment variable)
+            CARNET_PUBLISHER_ORGANIZATION   (environment variable)
+    
+      ${BOLD-}Identity Country:${RESET-}
+      
+            CARNET_PUBLISHER_COUNTRY        (environment variable)
+    
+    
+    To avoid situations where the private keys of all authorized 
+    identities become inaccessible, project authors should ensure 
+    identities are properly backed up. Project authors can also add 
+    a dedicated \"backup\".
+    
+    ${BOLD-}Local & Foreign Identity Management (Unstable)${RESET-}
+    
+    TBD
+    
+    ${BOLD-}Sealing Crates (Unstable)${RESET-}
+    
+    TBD
+    
+    ${BOLD-}Automatic Crate Verification (Unstable)${RESET-}
+    
+    Carnet verifies the signatures of registered crates automatically
+    before running cargo by default. Verification only succeeds when 
+    at least one signature from a trusted identity is valid.
+    
+    To avoid having to repeatedly re-sign crates during development, 
+    Carnet can temporarily suspend crate verification, only resuming 
+    when a predefined period of time had elapsed or when a condition 
+    causes the session to end abruptly. Carnet calls this temporary 
+    state a Development Session.
+    
+    A development Session starts when the user issues the 'edit' 
+    command. The session ends when the user issues the 'done' 
+    command, time runs out, or when another condition causes the 
+    session to end abruptly. A developer session lasts 2 hours by 
+    default.
+    
+    The following example illustrates how development sessions can 
+    be manually started and ended:
+    
+        ${DIM-}carnet carnet:edit${RESET-}
+        ${DIM-}# ... 
+        ${DIM-}carnet carnet:done${RESET-}
+        
+    ${BOLD-}Verification Flowchart (Unstable)${RESET-}
+    
+    The process used to verify a crate can be represented by the 
+    following flowchart:
+      
+        ${DIM-}Was this crate seen before?                                  ${RESET-}
+        ${DIM-} |                                                           ${RESET-}
+        ${DIM-} +-> no: Is the user willing to trust this crate?            ${RESET-}
+        ${DIM-} |    |                                                      ${RESET-}
+        ${DIM-} |    +-> no: Authentication Failure                         ${RESET-}
+        ${DIM-} |    |                                                      ${RESET-}
+        ${DIM-} |    +-> yes: Trust all identities found in this crate      ${RESET-}
+        ${DIM-} |         |   when verifying this crate in the future.      ${RESET-}
+        ${DIM-} |         |                                                 ${RESET-}
+        ${DIM-} |<--------+                                                 ${RESET-}
+        ${DIM-} |                                                           ${RESET-}
+        ${DIM-} +-> yes: Does it have at least one valid signature issued   ${RESET-}
+        ${DIM-}       |  by an identity the user trusts?                    ${RESET-}
+        ${DIM-}       |                                                     ${RESET-}
+        ${DIM-}       +- no:   Authentication Failure                       ${RESET-}
+        ${DIM-}       |                                                     ${RESET-}
+        ${DIM-}       +- yes:  Authentication Complete                      ${RESET-}
+        ${DIM-}${RESET-}
+      
+    Carnet associates crates with their paths on your system. This 
+    association is used to reliably associate identities with crates.
+    For this reason, a crate should not be moved without first 
+    \"distrusting\"  it. Once moved, a crate can be re-trusted and 
+    re-owned again.
+    
+    ${BOLD-}Crate State & Ownership (Unstable)${RESET-}
+    
+    TBD
+    
+    ${BOLD-}Configuration Settings${RESET-}
+    
+    Some Carnet settings can be configured persistently through the 
+    'enable' and 'disable' commands. The following table describes 
+    each available setting along with its default state:
+    
+        Setting Name        Description
+    ---------------------+-------------------------------------------
+        sandbox             This setting indicates whether Cargo 
+                            should be sandboxed. This setting is 
+                            enabled by default.
+                            
+        verification        This setting indicates whether crates 
+                            should be automatically verified. This 
+                            setting is enabled by default.
+                            
+        eula-agreement      This setting indicates the user's 
+                            agreement to the terms and conditions 
+                            of this software's license agreement. 
+                            This setting is disabled by default.
+
+    ${BOLD-}Exit Status${RESET-}  
+    
+    Cargo exits with code 101 when Cargo errors occur. Carnet exits 
+    with code 107 when normal Carnet errors occur and code 108 when 
+    internal errors occur.
+    
+${BOLD-}SUPPORT & LICENSING${RESET-}
+
+    Official commercial support and custom licensing are available 
+    directly from the authors of this software. Please send your 
+    inquiries via any of our official communication channels. 
+    
+    Our communication channels are listed at: 
+    https://www.ka.com.kw/en/contact
+
+
+${BOLD-}LICENSE & COPYRIGHT${RESET-}
+$COPYRIGHT_BLURB
+"
+
+
+# Runs args in a sandbox if sandboxing is not disabled. Run args 
+# directly if it is.
+sandbox() {
+    (
+        set -euH
+        set -o pipefail
+        trap - EXIT TERM INT
+        
+        if [[ "${DISABLE_SANDBOX-}" == "yes" ]]; then
+            ignored_step_message "Sandbox" "Sandboxing is disabled"
+            debug "Bypassing sandbox because sandboxing is disabled"
+            exec "$@"
+        fi
+        
+        
+        local SANDBOX_ARGS=( "--die-with-parent" )
+        if [[ "${SANDBOX_ALL}" == "yes" ]]; then
+            SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--unshare-all" )
+        else
+            if ! [[ "${SANDBOX_NETWORK-}" == "no" ]]; then
+                SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--unshare-net" )
+            fi
+            if ! [[ "${SANDBOX_PROCESS-}" == "no" ]]; then
+                SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--unshare-ipc"  "--unshare-pid" )
+            fi
+            # Note: Sandboxing/unsandboxing cargo home is done later
+            # Note: Sandboxing/unsandboxing tty session is done later
+            
+        fi
+        
+        if [[ "$SANDBOX_ALL" == "yes" ]] || ! [[ "$SANDBOX_FILESYSTEM" == "no" ]]; then
+            EFFECTIVE_CARGO_HOME="${CARGO_HOME-$HOME/.cargo/}" 
+            
+            # only useful when cargo-home is unsandboxed and cargo was never run 
+            # on the current system
+            mkdir -p "$EFFECTIVE_CARGO_HOME"
+            
+            SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" \
+                           "--ro-bind" "/etc"       "/etc"  \
+                           "--ro-bind" "/bin"       "/bin"  \
+                           "--ro-bind" "/lib"       "/lib"  \
+                           "--ro-bind" "/lib64"     "/lib64" \
+                           "--ro-bind" "/sbin"      "/sbin" \
+                           "--ro-bind" "/usr"       "/usr"  \
+                           "--tmpfs"   "/tmp"       \
+                           "--bind"    "${KNOWN_CRATE_PATH:-$PWD}" "${KNOWN_CRATE_PATH:-$PWD}" \
+                           "--dir"     "/run/user/$(id -u)" \
+                           "--proc"    "/proc"  \
+                           "--dev"      "/dev"  )
+           
+            if [[ "${SANDBOX_CARGO_HOME-}" == "no" ]]; then
+                SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--bind" "$EFFECTIVE_CARGO_HOME" "$EFFECTIVE_CARGO_HOME" )
+            else
+                SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--dir" "$HOME" )
+            fi
+            
+            if [[ -f "/run/systemd/resolve/stub-resolv.conf" ]]; then
+                SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--ro-bind" "/run/systemd/resolve/stub-resolv.conf" "/run/systemd/resolve/stub-resolv.conf" )
+            fi
+            
+            if [[ "${SANDBOX_RW_PATHS-}" ]]; then
+                OIFS="$IFS"
+                IFS=":" 
+                for bind in $SANDBOX_RW_PATHS; do
+                    IFS="$OIFS" 
+                    if ! [[ -e "$bind" ]]; then
+                        fatal "The following path does not exist: '$bind'"
+                    fi
+                    bind="$(realpath -- "$bind")"
+                    SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--bind" "$bind" "$bind")
+                done
+                IFS="$OIFS"
+            fi
+            if [[ "${SANDBOX_RO_PATHS-}" ]]; then
+                OIFS="$IFS"
+                IFS=":" 
+                for bind in $SANDBOX_RO_PATHS; do
+                    IFS="$OIFS" 
+                    if ! [[ -e "$bind" ]]; then
+                        fatal "The following path does not exist: '$bind'"
+                    fi
+                    bind="$(realpath -- "$bind")"
+                    SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}" "--ro-bind" "$bind" "$bind")
+                done
+                IFS="$OIFS"
+            fi
+        else
+            SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}"  "--bind" "/" "/" "--dev" "/dev" )
+        fi
+        
+        if [[ "$SANDBOX_ALL" == "yes" ]] || ! [[ "$SANDBOX_SESSION" == "no" ]]; then
+            SANDBOX_ARGS=( "${SANDBOX_ARGS[@]}"  "--new-session" )
+        fi
+        
+        
+        debug "Standard bublewrap options being applied are: "
+        for opt in "${SANDBOX_ARGS[@]}"; do
+            debug "   $opt"
+        done
+        if [[ "$(printf '0.3.0\n%s\n' "$(bwrap --version | cut -d ' ' -f2)" | sort -V )" == "0.3.0" ]]; then
+            exec bwrap "${SANDBOX_ARGS[@]}" --chdir "$PWD" -- "$@"
+        else
+            exec bwrap "${SANDBOX_ARGS[@]}" --chdir "$PWD" "$@"
+        fi        
+    ) || return "$?"
+    REQUESTED_PERMISSIONS=""
+}
+
+
+
+# 
+prompt_yes_no() {
+    read -r ANSWER
+    if [[ "$ANSWER" == "${1-yes}" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+
+# prompt_yes_no_and_require_yes PROMT Strings
+# Ask the user a yes/no question
+prompt_yes_no_and_require_yes() {
+    printf "$* (enter 'yes' and hit the Enter key to continue) "
+    if ! prompt_yes_no; then
+        fatal "'yes' was not given. Aborting."
+    fi
+}
+
+
+# remove_certs removes user's identity cert from the cache
+# should this also remove the certs from the crate itself? 
+# I don't think so because a crate author can transfer their 
+remove_certs() {
+    rm "$USERCONFIGDIR/known/$1/owners/$LOCAL_IDENTITY_FINGERPRINT.cert"
+}
+
+# copy_cert  PATH_TO_CERT  PATH_TO_KEY_DIR
+#
+# Copy a public openssl PEM certificate to a directory and rename it
+# to the hash of its file. Then generate the public key for that file
+#
+copy_cert() {
+    local identity_fingerprint="$( file_fingerprint "$1" )"
+    cp "$1" "$2/$identity_fingerprint.cert.part"
+    mv "$2/$identity_fingerprint.cert.part" "$2/$identity_fingerprint.cert"
+    openssl x509 -pubkey -noout -in "$2/$identity_fingerprint.cert" > "$2/$identity_fingerprint.pub"
+    debug "Copied cert '$1' as '$2/$identity_fingerprint.cert'."
+    debug "Extracted public key from '$1' as '$2/$identity_fingerprint.pub'."
+}
+
+# copy_certs  PATH_TO_CERTS_DIR  PATH_TO_KEY_DIR
+#
+# Same as `copy_cert` but treat first arg as directory and iterate 
+# over each file in it. Ignore nonfiles. See  `copy_cert`.
+#
+copy_certs() {
+    mkdir -p "$2"
+    for i in "$1"/*.cert; do 
+        if [[ -f "$i" ]]; then
+            copy_cert "$i" "$2"
+        else
+            debug "Ignored '$i' while copying certs from '$1' to '$2'."
+        fi
+    done
+}
+
+
+swapname() {
+    tcc -run - "$@" <<"CODE"
+    #include <unistd.h>
+    #include <fcntl.h> 
+    #include <stdio.h>
+    #include <sys/syscall.h>
+    
+    // Ubuntu 18.04 doesn't define this constant
+    // Obtained from '/usr/include/linux/fs.h'
+    // Always test first! Might not always corispond to userland 
+    // RENAME_EXCHANGE
+    int local_RENAME_EXCHANGE = (1 << 1);
+    
+    int main(int argc, char **argv) {
+        if (argc != 3) { 
+            fprintf(stderr, "Error: Could not swap names. Usage: %s PATH1 PATH2\n", argv[0]);
+            return 2; 
+        }
+        int r = syscall(
+            SYS_renameat2,
+            AT_FDCWD, argv[1],
+            AT_FDCWD, argv[2], 
+            local_RENAME_EXCHANGE
+        );
+        if (r < 0) {
+            perror("Error: Could not swap names");
+            return 1;
+        }
+        else return 0;
+    }
+CODE
+}
+
+
+# Sanity test
+SWAPNAME_TEST_PATH_1="$(mktemp)"
+SWAPNAME_TEST_PATH_2="$(mktemp)"
+echo "A" >"$SWAPNAME_TEST_PATH_1"
+echo "B" >"$SWAPNAME_TEST_PATH_2"
+swapname "$SWAPNAME_TEST_PATH_1" "$SWAPNAME_TEST_PATH_2"
+if [[ "$(cat "$SWAPNAME_TEST_PATH_1")" != "B" ]]; then 
+    fatal "Internal tests failed: 'swapname' is not swapping files!"
+fi
+rm "$SWAPNAME_TEST_PATH_1"
+rm "$SWAPNAME_TEST_PATH_2"
+
+
+
+# update_certs  PATH_TO_CERTS_DIR  PATH_TO_KEY_DIR
+#
+# Replaces all keys in  PATH_TO_KEY_DIR  with those in 
+# PATH_TO_CERTS_DIR, and do so in a manner that is resistant to 
+# corruption.
+#
+update_certs() {
+    mkdir -p "$2"
+    if [[ -d "$2.partial" ]]; then
+        rm -r "$2.partial"
+    fi
+    copy_certs "$1" "$2.partial"
+    swapname "$2.partial" "$2" || fatal "Could not update owners in '$2'"
+}
+
+
+
+# path_fingerprint  STRING
+#
+# Generate a fingerprint from the first argument treated as a string
+path_fingerprint() {
+    realpath -- "$1" | sha384sum | cut -d ' ' -f 1 | head -c 24
+}
+
+# file_fingerprint  FILENAME
+#
+# Generate a fingerprint from the file pointed at by the path in the 
+# first argument
+file_fingerprint() {
+    sha384sum -- "$1" | cut -d ' ' -f 1 | head -c 20
+}
+
+# initialize_crate PATH
+# 
+# This function initializes a plain cargo crate as a carnet crate
+# This function does not register the given crate with the system
+# use trust_crate.
+initialize_crate() {
+    local CRATE_PATH="$(realpath -- "$1")"
+    if ! [[ -d "$CRATE_PATH/.$PROJECT_NAME/owners" ]]; then mkdir -p "$CRATE_PATH/.$PROJECT_NAME/owners"; fi
+    # if ! [[ -d "$CRATE_PATH/.$PROJECT_NAME/identity.blacklist.d" ]]; then mkdir -p "$CRATE_PATH/.$PROJECT_NAME/identity.blacklist.d"; fi
+    echo '/\.git/'                     >  "$CRATE_PATH/.$PROJECT_NAME/seal-ignore.list"
+    echo '/\.git$'                     >> "$CRATE_PATH/.$PROJECT_NAME/seal-ignore.list"
+    echo '^\./target/'                 >> "$CRATE_PATH/.$PROJECT_NAME/seal-ignore.list"
+    echo "^\./\.$PROJECT_NAME/seal/"   >> "$CRATE_PATH/.$PROJECT_NAME/seal-ignore.list"
+    
+    echo "initialized"                > "$CRATE_PATH/.$PROJECT_NAME/initialized"
+    step_message "Initialized" "Initialized crate root ($CRATE_PATH)"
+}
+
+# This function registers a carnet crate as a forign/disowned crate.
+# The second argument can be a directory of public keys and certificates,
+# a single file?, or nothing for trusting the repository's own credentials
+#
+# trust_crate PATH [KEYOVERRIDE]
+trust_crate() {
+    local CRATE_PATH="$(realpath -- "$1")"
+    local new_crate_fingerprint="$( path_fingerprint "$CRATE_PATH" )"
+    if ! [[ -f "$USERCONFIGDIR/known/$new_crate_fingerprint/registered" ]]; then
+        debug "Trusting new crate at '$CRATE_PATH' giving it id $new_crate_fingerprint.."
+        mkdir -p "$USERCONFIGDIR/known/$new_crate_fingerprint"
+        if [[ -d "${2-}" ]]; then
+            update_certs "$2" "$USERCONFIGDIR/known/$new_crate_fingerprint/owners"
+            # mkdir "$USERCONFIGDIR/known/$new_crate_fingerprint/identity.blacklist.d"
+        elif [[ -f "${2-}" ]]; then
+            false
+        else
+            update_certs "$CRATE_PATH/.$PROJECT_NAME/owners" "$USERCONFIGDIR/known/$new_crate_fingerprint/owners"
+            # update_certs "$CRATE_PATH/.$PROJECT_NAME/identity.blacklist.d" "$USERCONFIGDIR/known/$new_crate_fingerprint/identity.blacklist.d"
+        fi
+        printf "forign\n" > "$USERCONFIGDIR/known/$new_crate_fingerprint/origin"
+        echo "registered" > "$USERCONFIGDIR/known/$new_crate_fingerprint/registered"
+        step_message "Trusted" "Registered crate with your system ($CRATE_PATH)"
+    else
+        fatal "Cannot trust crate '$CRATE_PATH' it is already trusted"
+    fi
+}
+
+# own_crate PATH
+own_crate() {
+    local CRATE_PATH="$(realpath -- "$1")"
+    local new_crate_fingerprint="$( path_fingerprint "$CRATE_PATH" )"    
+    
+    if ! [[ -f "$USERCONFIGDIR/known/$new_crate_fingerprint/registered" ]]; then
+        fatal "Crate at '$CRATE_PATH' is not known or trusted or it does not exist."
+    fi
+    
+    # Adding user's identity to the local cache
+    mkdir -p "$USERCONFIGDIR/known/$new_crate_fingerprint/owners"
+    copy_cert "$LOCAL_IDENTITY_CERT_PATH" "$USERCONFIGDIR/known/$new_crate_fingerprint/owners"
+    # We don't need to copy cert into the crate itself since seal() does this automatically.
+
+    
+    # Updating cookies (files to make sure that local keys don't get messed up when the user moves directories)
+    # 
+    mkdir -p "$USERCONFIGDIR/known/$new_crate_fingerprint/cookies.d"
+    mkdir -p "$CRATE_PATH/.$PROJECT_NAME/cookies.d"
+    local local_cookie="$(head -c 12 /dev/urandom | base64)"
+    local crate_cookie="$(printf "%s\n" "$local_cookie" | sha384sum | cut -d ' ' -f 1 | head -c 24)"
+    printf "%s\n" "$crate_cookie" > "$CRATE_PATH/.$PROJECT_NAME/cookies.d/$LOCAL_IDENTITY_FINGERPRINT.cookie"
+    printf "%s\n" "$local_cookie" > "$USERCONFIGDIR/known/$new_crate_fingerprint/cookies.d/$LOCAL_IDENTITY_FINGERPRINT.cookie"
+    
+    # Updating origin
+    printf "local\n" > "$USERCONFIGDIR/known/$new_crate_fingerprint/origin"
+    
+    step_message "Owned" "Claimed ownership over ($CRATE_PATH)"
+}
+
+# disown_crate PATH
+disown_crate() {
+    local CRATE_PATH="$(realpath -- "$1")"
+    local new_crate_fingerprint="$( path_fingerprint "$CRATE_PATH" )"
+    if ! [[ -f "$USERCONFIGDIR/known/$new_crate_fingerprint/registered" ]]; then
+        fatal "Crate at '$CRATE_PATH' is not known or trusted or it does not exist."
+    fi
+    
+    printf "forign\n" > "$USERCONFIGDIR/known/$new_crate_fingerprint/origin"
+    
+    remove_certs  "$new_crate_fingerprint"
+    
+    step_message "Disowned" "Disclaimed ownership over ($CRATE_PATH)"
+}
+
+distrust_crate() {
+    local CRATE_PATH="$(realpath -- "$1")"
+    local new_crate_fingerprint="$( path_fingerprint "$CRATE_PATH" )"
+    if ! [[ -f "$USERCONFIGDIR/known/$new_crate_fingerprint/registered" ]]; then
+        step_message "Distrusted" "Given crate is not registered on your system ($CRATE_PATH)"
+    else
+        rm -r "$USERCONFIGDIR/known/$new_crate_fingerprint"
+        step_message "Distrusted" "Unregistered crate from your system ($CRATE_PATH)"        
+    fi
+}
+uninitialize_crate() {
+    local CRATE_PATH="$(realpath -- "$1")"
+    distrust_crate "$CRATE_PATH"
+    if [[ -d "$KNOWN_CRATE_PATH/.$PROJECT_NAME" ]]; then 
+        rm -r "$KNOWN_CRATE_PATH/.$PROJECT_NAME"
+        step_message "Uninit" "Uninitialized crate ($CRATE_PATH)"
+    else
+        step_message "Uninit" "Crate is already uninitialized ($CRATE_PATH)"
+    fi
+}
+
+
+configuration_settings() {
+    if [[ "${1-}" == "enable" ]]; then
+        val="enabled"
+    elif [[ "${1-}" == "disable" ]]; then
+        val="disabled"
+    else
+        fatal "internal error: first argument given to configuration_settings must be enable/disable. '${1-}' given. "
+    fi
+    
+    mkdir -p "$USERCONFIGDIR/settings"
+    
+    if  [[  "${2-}" == "verification" ]]; then
+        echo "$val" > "$USERCONFIGDIR/settings/$2.setting"
+        step_message "Settings" "Automatic verification is now $val"
+    elif [[ "${2-}" == "sandbox" ]]; then
+        echo "$val" > "$USERCONFIGDIR/settings/$2.setting"
+        step_message "Settings" "Sandboxing is now $val"  
+    elif [[ "${2-}" == "eula-agreement" ]]; then
+        echo "$val" > "$USERCONFIGDIR/settings/$2.setting"
+        if [[ "${1-}" == "enable" ]]; then
+            step_message "Settings" "You indicate that you agree to the terms and conditions of the EULA"
+        else
+            step_message "Settings" "You indicate that you do not agree to the terms and conditions of the EULA"
+        fi
+        
+    else 
+        fatal "Setting '${2-}' is not known."
+    fi
+    
+    
+}
+
+
+# describe_mismatch     path-TO-TRUSTED-HASH LIST  PATH-TO-ROOT-OF-CRATE  HASH-ALGO
+describe_mismatch() {
+    local DISPLAY_CURRENT_SIGNATURES="$(generate_crate_seal_list "$hashalgo" "$2"  | tr '\n' '␤' | tr '\0' '\n')"
+    local DISPLAY_TRUSTED_SIGNATURES="$(cat "$1" | tr '\n' '␤' | tr '\0' '\n')"
+    
+    local CURRENT_LINECOUNT=$(printf "%s" "$DISPLAY_CURRENT_SIGNATURES" | wc -l)
+    local TRUSTED_LINECOUNT=$(printf "%s" "$DISPLAY_TRUSTED_SIGNATURES" | wc -l)
+    #  Signed file manifest does not list files that are currently present in this directory.
+    if [[ "$CURRENT_LINECOUNT" -lt "$TRUSTED_LINECOUNT" ]]; then
+        warn "Missing files (and possibly edited and extra files) not accounted for in the signed manifest."
+    elif [[ "$CURRENT_LINECOUNT" -gt "$TRUSTED_LINECOUNT" ]]; then
+        warn "Extra files (and possibly edited and missing files) not accounted for in the signed manifest."
+    else [[ "$CURRENT_LINECOUNT" == "$TRUSTED_LINECOUNT" ]]
+        warn "Missing, edited, or missing files not accounted for in the signed manifest."
+    fi
+    
+    set -e
+    set -u
+    set -H
+    set -o pipefail
+    # Some concerns:
+    #   Filenames can contain anything but nulls and forward slashs. This means that
+    #   an attacker can include newlines hashes. It's not clear to me if this can 
+    #   be exploited (especially given how sha*sum handles newlines in filenames.
+    # 
+    # TODO investigate this when you have more time.
+    #
+    comm --nocheck-order --output-delimiter= -3 <(printf "%s" "$DISPLAY_CURRENT_SIGNATURES") <(printf "%s" "$DISPLAY_TRUSTED_SIGNATURES") | sed -E 's/^([^ ]+)+[ 	]*.*$/\1/g' | sort | uniq |  while read -r l; do warn "Problem with file: $l"; done
+    
+}
+
+
+# generate_crate_seal_list "sha384"|"sha256" INSECURE_KNOWN_CRATE_PATH
+#
+# Generate a sorted list of all files in $2, with the
+# exclusion of any relative paths that match one of the patterns 
+# listed. 
+generate_crate_seal_list() {
+    local -a find_args
+    
+    if ! [[ "${1-}" ]]; then
+        fatal "INTERNAL BUG: HASH ALGO REQUIRED"
+    fi
+    # "^\b$"
+    if [[ -f "$2/.$PROJECT_NAME/seal-ignore.list" ]]; then
+        while read -r pattern; do
+            #find_args=( "${find_args[@]}" "-not" "-regex" "$pattern" )
+            find_args=( "${find_args[@]}" "-e" "$pattern" )
+        done < <( cat "$2/.$PROJECT_NAME/seal-ignore.list" | sed '/^\s*$/d' )
+    fi
+    
+    ( 
+      set -e
+      set -u
+      set -H;
+      set -o pipefail; 
+      local PATHNAME;
+      cd "$2" 
+      find "." -type f -print0 | grep -vzE "${find_args[@]}" -e "^\b$" | while read -d '' -r PATHNAME; do
+        printf "%s %s\0" "$PATHNAME" "$(cat "$PATHNAME" | "$1"sum | cut -d ' ' -f 1)"
+      done | env LC_ALL=C sort -z
+     ) 
+}
+
+
+
+# seal
+#
+# Sign current owned carnet crate, but ignore any files matching 
+# .$PROJECT_NAME/seal-ignore.list.
+#
+# Will not sign any crate that is not registered and is not local/owned.
+seal() {
+    if ! [[ "${KNOWN_CRATE_STATE-}" ]] ||  ! [[ "$KNOWN_CRATE_STATE" == "found" ]] || ! [[ "$KNOWN_CRATE_ORIGIN" == "local" ]]; then
+        fatal "Cannot sign a crate that is not owned by you (${KNOWN_CRATE_PATH-}). Run $PROJECT_NAME carnet:crate-info for more information about the crate."
+    fi
+    
+    if ! [[ -f "$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/registered" ]]; then
+        ignored_step_message "Sealing" "Cannot seal crate because it wasn't initialized by $PROJECT_NAME."
+        return 0
+    fi
+    step_message "Sealing" "Signing crate root ($KNOWN_CRATE_PATH)"
+    if [[ -f "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal" ]]; then rm -r "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal"; fi
+    mkdir -p "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal"
+    mkdir -p "$KNOWN_CRATE_PATH/.$PROJECT_NAME/owners"
+    # mkdir -p "$KNOWN_CRATE_PATH/.$PROJECT_NAME/identity.blacklist.d"
+        
+    #cp "$LOCAL_IDENTITY_PUBKEY_PATH" "$KNOWN_CRATE_PATH/.$PROJECT_NAME/owners/$LOCAL_IDENTITY_FINGERPRINT.pub"
+    cp "$LOCAL_IDENTITY_CERT_PATH"   "$KNOWN_CRATE_PATH/.$PROJECT_NAME/owners/$LOCAL_IDENTITY_FINGERPRINT.cert"
+    
+    for hashalgo in "${HASH_ALGORITHMS[@]}"; do
+        generate_crate_seal_list "$hashalgo" "$KNOWN_CRATE_PATH" > "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/signatures.$hashalgo"
+        
+        openssl dgst -sign "$LOCAL_IDENTITY_PRIVKEY_PATH" \
+                     -"$hashalgo" \
+                     -out "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/signatures.$hashalgo.$LOCAL_IDENTITY_FINGERPRINT.sig" \
+                     "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/signatures.$hashalgo"
+        
+    done
+    echo "sealed" > "$KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/sealed"
+}
+
+verify() {
+    if ! [[ "${KNOWN_CRATE_STATE-}" ]] ||  [[ "$KNOWN_CRATE_STATE" != "found" ]]; then
+        fatal "Cannot verify crate because it isn't known."
+        return 0
+    fi
+    
+    # To minimize the chances of accidentally relying on unverified crate content, 
+    # $KNOWN_CRATE_PATH is temporarly set to an invalid value. Only use INSECURE_KNOWN_CRATE_PATH 
+    # for informative purposes. Set back when the crate is verified
+    local INSECURE_KNOWN_CRATE_PATH="$KNOWN_CRATE_PATH"
+    KNOWN_CRATE_PATH="HIDDEN"
+    
+    step_message "Verifying" "Checking file signatures ($INSECURE_KNOWN_CRATE_PATH)"
+    
+    if ! [[ -f "$INSECURE_KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/sealed" ]]; then
+        fatal "Cannot verify crate because it wasn't sealed."
+    fi
+    
+    local CACHED_WHITELIST_DIR="$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/owners"
+    
+    local -a issues;
+    
+    # Verify pk signatures
+    local KEY=""
+    for candidate_identity_cert in "$CACHED_WHITELIST_DIR"/*.cert; do
+        # If the certificate isn't a file, skip it.
+        if ! [[ -f "$candidate_identity_cert" ]]; then 
+            fatal "No owners were found or a non file was found in '$CACHED_WHITELIST_DIR'"
+            return 1
+        fi
+        
+        # Generate owner fingerprint from cert
+        local cached_whitelist_fingerprint="$(file_fingerprint "$candidate_identity_cert")"
+        
+        # (Consistency check) Ensure that fingerprint of the cert matches its filename
+        local expected_cached_whitelist_fingerprint="$(basename "$candidate_identity_cert")"
+        expected_cached_whitelist_fingerprint="${expected_cached_whitelist_fingerprint::-5}"
+        if [[ "$expected_cached_whitelist_fingerprint" != "$cached_whitelist_fingerprint" ]]; then
+            fatal "The filename of the identity certificate for does not match its fingerprint: Found '$candidate_identity_cert' which should be named '$cached_whitelist_fingerprint'"
+            return 1
+        fi
+        
+        # If a crate owner is pinned, skip any crate owner that doesn't doesn't match it
+        if [[ "${PINNED_OWNER_IDENTITY_FINGERPRINT-}" ]] && [[ "$PINNED_OWNER_IDENTITY_FINGERPRINT" != "$cached_whitelist_fingerprint" ]]; then
+            debug "Ignored ${cached_whitelist_fingerprint} because it isn't the pinned owner $PINNED_OWNER_IDENTITY_FINGERPRINT"
+            issues=( "${issues[@]}" "Ignored any signatures by identity ${cached_whitelist_fingerprint} because it doesn't match what was pinned ($PINNED_OWNER_IDENTITY_FINGERPRINT)" )
+            verified="no"
+            break
+        fi
+        
+        # Verifying public key against
+        local candidate_identity_pubkey="$(dirname "$candidate_identity_cert")/$cached_whitelist_fingerprint.pub"
+        if ! cmp -s -- "$candidate_identity_pubkey" < <(openssl x509 -pubkey -noout -in "$candidate_identity_cert"); then
+            fatal "The on-disk public key '$candidate_identity_pubkey' does not correspond of that is generated from '$candidate_identity_cert'"
+            return 1
+        fi
+        
+        
+        debug "looking for signatures made by '$cached_whitelist_fingerprint' in '$INSECURE_KNOWN_CRATE_PATH/.$PROJECT_NAME/seal'"
+        
+        # If this crate was signed by this particular crate owner 
+        if [[ -f "$INSECURE_KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/signatures.sha384.$cached_whitelist_fingerprint.sig" ]]; then
+            debug "signature found: 'signatures.sha384.$cached_whitelist_fingerprint.sig'"
+            
+            # Make sure that crate files are verified against the checksum files of ALL hash algorithms 
+            local verified="no"
+            for hashalgo in "${HASH_ALGORITHMS[@]}"; do
+                debug "Verifying signatures made using $hashalgo..."
+                verified="no"
+                local signature_file="$INSECURE_KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/signatures.$hashalgo.$cached_whitelist_fingerprint.sig"
+                local hashsum_file="$INSECURE_KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/signatures.$hashalgo"
+                local OPENSSL_OUTPUT
+                
+                # First verify the signature of the checksum file using the owner's public key
+                debug "Verifying signature of '$hashsum_file' using '$candidate_identity_pubkey'"
+                if ! OPENSSL_OUTPUT="$(openssl dgst \
+                     -verify "$candidate_identity_pubkey" \
+                     -keyform pem \
+                     "-$hashalgo" \
+                     -signature "$signature_file" \
+                     "$hashsum_file" 2>&1)"; then
+                     debug "Invalid signature '$signature_file' for '$hashsum_file' with $hashalgo: $OPENSSL_OUTPUT"
+                     issues=( "${issues[@]}" "Bad signature for ${cached_whitelist_fingerprint}" )
+                     verified="no"
+                     break
+                fi 
+                
+                # Then generate a local checksum list of all files using whatever /untrusted/ parameters in 'seal-ignore.list',
+                # hash both checksum files (trusted and untrusted), and compare.
+                
+                debug "Generating checksums of unverified crate content"
+                local CURRENT_SIGNATURES_HASH="$(generate_crate_seal_list "$hashalgo" "$INSECURE_KNOWN_CRATE_PATH" | "$hashalgo"sum)"
+                local TRUSTED_SIGNATURES_HASH="$(cat "$hashsum_file" | "$hashalgo"sum)"
+                
+                debug "Verifying checksums against of '$hashsum_file'"
+                if [[ "$CURRENT_SIGNATURES_HASH" != "$TRUSTED_SIGNATURES_HASH" ]]; then
+                    describe_mismatch "$hashsum_file" "$INSECURE_KNOWN_CRATE_PATH" "$hashalgo"
+                    fatal "$hashalgo checksum mismatch."
+                fi
+                verified="yes"
+            done
+            
+            # If all hash checksum checks pass, consider the crate verified
+            if [[ "$verified" == "yes" ]]; then
+                KNOWN_CRATE_PATH="$INSECURE_KNOWN_CRATE_PATH"
+                # Overwrite local crate owners with the list provided by the now trusted crate 
+                update_certs "$KNOWN_CRATE_PATH/.$PROJECT_NAME/owners" "$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/owners"
+                step_message "Verified" "Sealed by ${cached_whitelist_fingerprint}"
+                debug "verification okay"
+                return
+            else 
+                debug "Verification failed for ${cached_whitelist_fingerprint}."
+                continue
+            fi
+        else
+            debug "signature not found."
+            issues=( "${issues[@]}" "Signature missing for ${cached_whitelist_fingerprint}" )
+        fi    
+    done
+    fatal "Could not verify crate:$(echo ""; for issue in "${issues[@]}"; do printf "        - %s\n" "$issue"; done)"
+    return 1
+}
+
+
+
+#  show_cert_information PATH-TO-PEM-CERT ["identity-mode"]
+show_cert_information() {
+    local AUTHOR_IDENT_ID="$(file_fingerprint "$1")"
+    if [[ "$AUTHOR_IDENT_ID.cert" != "$(basename "$1")" ]] && [[ "${2-}" != "identity-mode" ]]; then
+        fatal "Found corrupted identity certificate: the given certificate was not named correctly: '$1'"
+    fi
+    echo ""
+    if [[ "${2-}" != "identity-mode" ]]; then
+        printf "  Identity $AUTHOR_IDENT_ID which claims:\n"
+    fi
+    openssl x509 -nameopt multiline,-esc_msb,utf8 -in "$1" -noout -subject \
+        | sed -E "/^subject=/d" \
+        | sed -E 's/^    commonName   /    Name   /g' \
+        | sed -E 's/^    emailAddress    /    Email     /g' \
+        | sed -E 's/^    organizationName   /    Organization /g' \
+        | sed -E 's/^    countryName   /    Country /g' 
+    
+}
+# List all identities found in the given directory
+list_identities() {
+    if ! [[ -d "${1}" ]]; then
+        fatal "Given identity directory doesn't contain any identities or does not exist (${1-})."
+    fi
+    for licert in "$1"/*.cert; do 
+        if [[ -f "$licert" ]]; then
+            show_cert_information "$licert"
+        else
+            fatal "Found corrupted or missing identity certificates in '$1'. Has this crate been sealed yet?"
+        fi
+    done
+}
+
+
+# locate_known_crate_from_the_inside_and_set_up_global_variables
+# 
+# 
+locate_known_crate_from_the_inside_and_set_up_global_variables() {
+    while true; do
+        KNOWN_CRATE_PATH="$(realpath -- $KNOWN_CRATE_PATH)"
+        KNOWN_CRATE_PATH_HASH="$( path_fingerprint "$KNOWN_CRATE_PATH" )"
+
+        if ! [[ -f "$KNOWN_CRATE_PATH/.$PROJECT_NAME/initialized" ]] && [[ -f "$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/registered" ]]; then
+            fatal "Phantom crate found at '$KNOWN_CRATE_PATH'. This means that a crate at this path was previously registered with Carnet but has since been moved or deleted."
+        fi
+        
+        if [[ -f "$KNOWN_CRATE_PATH/.$PROJECT_NAME/initialized" ]] && ! [[ -f "$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/registered" ]]; then
+            echo "Found a new unknown crate at '$KNOWN_CRATE_PATH' that was signed by the following identity(s):"
+            list_identities "$KNOWN_CRATE_PATH/.$PROJECT_NAME/owners"
+            echo ""
+            prompt_yes_no_and_require_yes "Would you like to trust this crate?"
+            trust_crate "$KNOWN_CRATE_PATH"
+        fi
+        
+        if [[ -f "$KNOWN_CRATE_PATH/.$PROJECT_NAME/initialized" ]] && [[ -f "$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/registered" ]]; then
+            KNOWN_CRATE_STATE="found"
+            KNOWN_CRATE_ORIGIN="$(cat "$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/origin")"
+            
+            if [[ "$KNOWN_CRATE_ORIGIN" == "local" ]]; then
+                local crate_cookie="$KNOWN_CRATE_PATH/.$PROJECT_NAME/cookies.d/$LOCAL_IDENTITY_FINGERPRINT.cookie"
+                local cached_cookie="$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/cookies.d/$LOCAL_IDENTITY_FINGERPRINT.cookie"
+                local crate_cookie_content="$(cat "$crate_cookie")"
+                local cached_cookie_content="$(cat "$cached_cookie" | sha384sum | cut -d ' ' -f 1 | head -c 24)"
+                if [[ "$crate_cookie_content" != "$cached_cookie_content" ]] ; then
+                    debug "Crate cookies do not match: crate:'$crate_cookie_content', cached:'$cached_cookie_content'"
+                    fatal "Crate cookies do not match. This means that the crate was likely replaced since it was last owned."
+                fi
+            fi
+            debug "Root crate path: '${KNOWN_CRATE_PATH-}'"
+            debug "Root crate path hash: '${KNOWN_CRATE_PATH_HASH-}'"
+            debug "Root crate path origin: '${KNOWN_CRATE_ORIGIN-}'"
+            break
+        fi
+        if [[ "$( realpath -- "$KNOWN_CRATE_PATH" )" == "/" ]]; then
+            debug "Could not find Cargo.toml in this directory or any of its parents.\n"
+            unset KNOWN_CRATE_PATH
+            unset KNOWN_CRATE_PATH_HASH
+            unset KNOWN_CRATE_ORIGIN
+            unset KNOWN_CRATE_STATE
+            debug "Could not find root of crate."
+            debug "Could not derive Root crate's path hash."
+            break
+        fi
+        KNOWN_CRATE_PATH="$KNOWN_CRATE_PATH/.."
+    done
+}
+
+
+clear_dev_session() {
+    if ! [[ "${KNOWN_CRATE_PATH_HASH-}" ]]; then
+        debug "Not refreshing dev session because no crate was found"
+        return
+    fi
+    local SESSION_DIR="$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/session"
+    mkdir -p "$SESSION_DIR"
+    if ! [[ -f "$SESSION_DIR/starting.timestamp" ]]; then printf "%s\n" "0" > "$SESSION_DIR/starting.timestamp"; fi
+    if ! [[ -f "$USERCONFIGDIR/session.duration" ]]; then printf "%s\n" "3600" > "$USERCONFIGDIR/session.duration"; fi
+    
+    printf "0\n" > "$SESSION_DIR/starting.timestamp"
+}
+refresh_dev_session() {
+    if ! [[ "${KNOWN_CRATE_PATH_HASH-}" ]]; then
+        debug "Not refreshing dev session because no crate was found"
+        return
+    fi
+    local SESSION_DIR="$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/session"
+    mkdir -p "$SESSION_DIR"
+    if ! [[ -f "$SESSION_DIR/starting.timestamp" ]]; then printf "%s\n" "0" > "$SESSION_DIR/starting.timestamp"; fi
+    if ! [[ -f "$USERCONFIGDIR/session.duration" ]]; then printf "%s\n" "3600" > "$USERCONFIGDIR/session.duration"; fi
+    
+    local last_session_ts="$(cat "$SESSION_DIR/starting.timestamp")"
+    local max_session_duration="$(cat "$USERCONFIGDIR/session.duration")"
+    local now="$(date +%s)"
+    [[ "$last_session_ts" -eq "$last_session_ts" ]]
+    [[ "$max_session_duration" -eq "$max_session_duration" ]]
+    
+    if (( now < last_session_ts )) || (( now >= (last_session_ts + max_session_duration) )); then
+        local session_status="inactive"
+    else
+        local session_status="active"
+    fi
+    
+    if [[ "$NEW_DEV_SESSION" == "yes" ]]; then
+        printf "%s\n" "$now" > "$SESSION_DIR/starting.timestamp"
+        DISABLE_AUTOVERIFICATION="yes"
+        NEW_DEV_SESSION="no"
+        printf "\n"
+        if [[ "$session_status" == "active" ]]; then
+            printf "The edit session for this crate is still active "
+        else
+            printf "The edit session for this crate is now active "
+        fi
+        printf "and is set to expire after $(( $max_session_duration/60 )) minute(s).
+  - To change this duration, edit '$USERCONFIGDIR/session.duration'.
+  - To expire this duration, run 'carnet carnet:done'.\n\n"
+    else
+        if [[ "$session_status" == "active" ]]; then
+            printf "%s\n" "$now" > "$SESSION_DIR/starting.timestamp"
+            DISABLE_AUTOVERIFICATION="yes"
+            NEW_DEV_SESSION="no"
+        fi
+    fi
+}
+
+
+# Find Cargo Directory 
+KNOWN_CRATE_STATE=""                    # If set to 'found', the crate has been
+                                        # 'seen'/registered by carnet on this system
+
+KNOWN_CRATE_PATH="."                    # Presumed root of carnet-initialized crate 
+                                        # root. This value is an untrustworthy 
+                                        # assumption unless KNOWN_CRATE_STATE is set 
+                                        # to "found".
+
+KNOWN_CRATE_PATH_HASH=""                # Presumed path hash of carnet-initialized crate 
+                                        # root. This value is an untrustworthy 
+                                        # assumption unless KNOWN_CRATE_STATE is set 
+                                        # to "found".
+                                        #
+                                        # path hashes are what carnet uses to track 
+                                        # seen/registered crates on this system
+                                        
+KNOWN_CRATE_ORIGIN="foreign"            # Can be 'foreign', 'local', '', or any 
+                                        # other value. Used for crate authentication
+                                        # and signing (sealing).
+                                        
+SANDBOX_ALL="yes"                       # If yes, apply the most restrictive sandboxing 
+                                        # possible. This includes sandboxing resources 
+                                        # that aren't currently controllable by the user.
+                                        #
+                                        # You need to set this to no whenever granularity 
+                                        # is needed.
+                                                        
+SANDBOX_FILESYSTEM="yes"
+
+SANDBOX_NETWRORK="yes"
+
+SANDBOX_PROCESSES="yes"
+
+SANDBOX_SESSION="yes"
+
+SANDBOX_CARGO_HOME="yes"
+
+SANDBOX_RO_PATHS=""
+
+SANDBOX_RW_PATHS=""
+
+USERCONFIGDIR="$HOME/.config/kw.com.ka.$PROJECT_NAME" # Where "seen"/registered crates are tracked, user keys are stored, and all other "user" state maintained. 
+
+DISABLE_AUTOVERIFICATION="no"           # Disables automatic verification.
+                                        # Manually set to yes when the appropriate 
+                                        # flag is given, and automatically set to yes
+                                        # when the appropriate user configuration 
+                                        # setting is set or when a dev session is active.
+
+DISABLE_SANDBOX="no"                    # Disables sandboxing (bypassing bublewrap entirely)
+                                        # Manually set to yes when the appropriate 
+                                        # flag is given, and automatically set to yes
+                                        # when the appropriate user configuration 
+                                        # setting is set.
+
+COMMAND=""                              # The primary command carnet is supposed to execute.
+
+NEW_DEV_SESSION="no"                    # If set to yes, automatically start/extend a dev 
+                                        # session where autoverification is set to no.
+
+LOCAL_IDENTITY_CERT_PATH=""             # The certificate used for signatures when sealing
+                                        # a local crate. 
+
+LOCAL_IDENTITY_PUBKEY_PATH=""           # The public key used when sealing
+                                        # a local crate. You should remove this in favor 
+                                        # of maintaining a single source of truth 
+                                        # LOCAL_IDENTITY_CERT_PATH
+                                        
+LOCAL_IDENTITY_PRIVKEY_PATH=""          # The private key used for signatures when sealing
+                                        # a local crate. 
+                                        
+LOCAL_IDENTITY_FINGERPRINT=""           # The local identity fingerprint used when sealing
+                                        # a local crate. 
+                                        
+PINNED_OWNER_IDENTITY_FINGERPRINT=""    # If set, only verify crates against this identity 
+                                        # and no other when verifying crates.
+
+declare -a UNHANDLED_NON_OPTIONS;       # Any non-option (not prefixed by a dash) 
+                                        # that isn't consumed by carnet. '--cargo:'-style 
+                                        # flags are converted to their unprefixed counterparts
+                                        
+declare -a FILTERED_ARGS                # All arguments that aren't consumed by carnet. This
+                                        # array is a superset of UNHANDLED_NON_OPTIONS.
+                                        # '--cargo:'-style flags are converted to their 
+                                        # unprefixed counterparts.
+                                        
+END_OF_OPTIONS="no"                     # Used when processing cli args. If set to 'yes', 
+                                        # treat args as opaque strings, possibly passing 
+                                        # them to cargo as-is with the exception of 
+                                        # '--cargo:' style flags which are converted to
+                                        # normal cargo flags.
+
+# Sort CLI arguments. Set appropriate flags/vars if args are relevant or sort them into FILTERED_ARGS and UNHANDLED_NON_OPTIONS buckets
+for arg in "$@"; do
+    if   [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:disable-sandbox" ]] || [[ "$arg" == "--disable-sandbox" ]] ); then
+        DISABLE_SANDBOX="yes"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:disable-verification" ]] || [[ "$arg" == "--disable-verification" ]] ); then
+        DISABLE_AUTOVERIFICATION="yes"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:unsandbox-cargo-home" ]] || [[ "$arg" == "--unsandbox-cargo-home" ]] ); then
+        SANDBOX_CARGO_HOME="no"
+        SANDBOX_ALL="no"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:unsandbox-filesystem" ]] || [[ "$arg" == "--unsandbox-filesystem" ]] ); then
+        SANDBOX_FILESYSTEM="no"
+        SANDBOX_ALL="no"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:unsandbox-processes" ]] || [[ "$arg" == "--unsandbox-processes" ]] ); then
+        SANDBOX_PROCESS="no"
+        SANDBOX_ALL="no"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:unsandbox-network" ]] || [[ "$arg" == "--unsandbox-network" ]] ); then
+        SANDBOX_NETWORK="no"
+        SANDBOX_ALL="no"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:unsandbox-session" ]] || [[ "$arg" == "--unsandbox-session" ]] ) ; then
+        SANDBOX_SESSION="no"
+        SANDBOX_ALL="no"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:verbose" ]] || [[ "$arg" == "--verbose" ]] ); then
+        DEBUG="yes"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--$PROJECT_NAME:config-dir= ]]; then
+        USERCONFIGDIR="${arg:20}"
+        if ! [[ -d "$(dirname "$USERCONFIGDIR" 2>/dev/null || true)" ]]; then
+            fatal "Cannot find parent directory for '$USERCONFIGDIR'"
+        fi
+        USERCONFIGDIR="$(realpath -- "${USERCONFIGDIR}")"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--config-dir= ]]; then
+        USERCONFIGDIR="${arg:13}"
+        if ! [[ -d "$(dirname "$USERCONFIGDIR" 2>/dev/null || true)" ]]; then
+            fatal "Cannot find parent directory for '$USERCONFIGDIR'"
+        fi
+        USERCONFIGDIR="$(realpath -- "${USERCONFIGDIR}")"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--$PROJECT_NAME:pinned-owner= ]]; then
+        PINNED_OWNER_IDENTITY_FINGERPRINT="${arg:22}"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--pinned-owner= ]]; then
+        PINNED_OWNER_IDENTITY_FINGERPRINT="${arg:15}"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--$PROJECT_NAME:ro-paths= ]]; then
+        SANDBOX_RO_PATHS="${arg:18}"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--ro-paths= ]]; then
+        SANDBOX_RO_PATHS="${arg:11}"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--$PROJECT_NAME:rw-paths= ]]; then
+        SANDBOX_RW_PATHS="${arg:18}"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" =~ ^--rw-paths= ]]; then
+        SANDBOX_RW_PATHS="${arg:11}"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:help" ]] || [[ "$arg" == "$PROJECT_NAME:help" ]] ) ; then
+        COMMAND="help"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--help" ]] || [[ "$arg" == "help" ]] || [[ "$arg" == "-h" ]]) ; then
+        COMMAND="cargo-help"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:sandbox-run" ]] || [[ "$arg" == "sandbox-run" ]] ); then
+        COMMAND="sandbox-run"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:seal" ]] || [[ "$arg" == "seal" ]] ); then
+        COMMAND="seal"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:disable" ]] || [[ "$arg" == "disable" ]] ); then
+        COMMAND="disable"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:enable" ]] || [[ "$arg" == "enable" ]] ); then
+        COMMAND="enable"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:verify" ]] || [[ "$arg" == "verify" ]] ); then
+        COMMAND="verify"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:owners" ]] || [[ "$arg" == "owners" ]] ); then
+        COMMAND="list-owners"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:files" ]] || [[ "$arg" == "files" ]] ); then
+        COMMAND="list-seal-files"
+        
+    #elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:bash-embedable" ]] || [[ "$arg" == "bash-embedable" ]] ); then
+    #    COMMAND="generate-bash-embedable"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:own" ]] || [[ "$arg" == "own" ]] ); then
+        COMMAND="own"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:disown" ]] || [[ "$arg" == "disown" ]] ); then
+        COMMAND="disown"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:distrust" ]] || [[ "$arg" == "distrust" ]] ); then
+        COMMAND="distrust"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:init" ]] || [[ "$arg" == "init" ]] ); then
+        COMMAND="init"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:uninit" ]] || [[ "$arg" == "uninit" ]] ) ; then
+        COMMAND="uninit"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:identity" ]] || [[ "$arg" == "identity" ]] ); then
+        COMMAND="identity"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:version" ]] || [[ "$arg" == "--version" ]] ); then
+        COMMAND="version"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "--$PROJECT_NAME:legal" ]] || [[ "$arg" == "--legal" ]] ); then
+        COMMAND="legal"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:edit" ]] || [[ "$arg" == "edit" ]] ); then
+        COMMAND="edit"
+    
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && ( [[ "$arg" == "$PROJECT_NAME:done" ]] || [[ "$arg" == "done" ]] ); then
+        COMMAND="done"
+        
+    elif [[ "$END_OF_OPTIONS" == "no" ]] && [[ "$arg" == "--$PROJECT_NAME:end" ]]; then
+        END_OF_OPTIONS="yes"
+        
+    else 
+        if [[ "$arg" == "--" ]]; then
+            END_OF_OPTIONS="yes"
+        fi
+        # strip namespaced cargo args
+        if [[ "$END_OF_OPTIONS" == "no" ]]; then
+            arg="$(printf "%s\n" "$arg" | sed 's/^--cargo:/--/g' | sed 's/^cargo://g')"
+        fi
+        # collect a copy of arg in UNHANDLED_NON_OPTIONS if it isn't a flag
+        if ! [[ "$arg" =~ ^- ]]; then
+            UNHANDLED_NON_OPTIONS=("${UNHANDLED_NON_OPTIONS[@]}" "$arg")
+        fi
+        FILTERED_ARGS=( "${FILTERED_ARGS[@]}" "$arg" ) 
+    fi
+done
+
+if ! [[ "${CARGO_PATH-}" ]]; then 
+    CARGO_PATH=$(which "cargo") || {
+        fatal "Could not find cargo in PATH."
+    }
+fi
+
+if [[ "$COMMAND" == "cargo-help" ]]; then
+    # TODO sandbox 
+    "$CARGO_PATH" "help"
+    printf "%s\n\n" "See '$PROJECT_NAME $PROJECT_NAME:help' or '$PROJECT_NAME --$PROJECT_NAME:help' for more information about options and commands that are specific to carnet."
+    exit 0
+elif [[ "$COMMAND" == "help" ]]; then
+    printf "$HELP\n" | less -R
+    exit 0
+elif [[ "$COMMAND" == "version" ]]; then
+    echo "$PROJECT_NAME $PROJECT_VERSION ($PROJECT_DATE NCA)"
+    # TODO sandbox 
+    "$CARGO_PATH" version
+    exit 0
+elif [[ "$COMMAND" == "legal" ]]; then
+    echo "$COPYRIGHT_BLURB"
+    exit 0
+
+fi
+
+if ! [[ -d "$USERCONFIGDIR" ]]; then
+    printf "%s\n" "Could not find identity directory '$USERCONFIGDIR'. Setting up new identity..."
+    printf "%s\n" "The following information cannot be changed without generating a new identity: "
+    
+    # Finding author name
+    PUBLISHER_NAME="" 
+    if [[ "${CARNET_PUBLISHER_NAME-}" ]]; then 
+        PUBLISHER_NAME="${CARNET_PUBLISHER_NAME-}"
+    elif [[ "${CARGO_NAME-}" ]]; then 
+        PUBLISHER_NAME="${CARGO_NAME-}"
+    elif [[ "${GIT_AUTHOR_NAME-}" ]]; then 
+        PUBLISHER_NAME="${GIT_AUTHOR_NAME-}"
+    elif [[ "${GIT_COMMITTER_NAME-}" ]]; then 
+        PUBLISHER_NAME="${GIT_COMMITTER_NAME-}"
+    elif git config user.name >/dev/null 2>&1 && [[ "$(git config user.name)" ]]; then 
+        PUBLISHER_NAME="$(git config user.name)"
+    elif [[ "${USER-}" ]]; then 
+        PUBLISHER_NAME="${USER-}"
+    elif [[ "${USERNAME-}" ]]; then 
+        PUBLISHER_NAME="${USERNAME-}"
+    elif [[ "${NAME-}" ]]; then 
+        PUBLISHER_NAME="${NAME-}"
+    else
+        fatal "Could not determine a name to use for your new public identity. Try setting git or setting CARNET_PUBLISHER_NAME."
+    fi
+    prompt_yes_no_and_require_yes "Set your public name as '$PUBLISHER_NAME'?"
+    
+    # Finding author email
+    PUBLISHER_EMAIL=""
+    if [[ "${CARNET_PUBLISHER_EMAIL-}" ]]; then 
+        PUBLISHER_EMAIL="${CARNET_PUBLISHER_EMAIL-}"
+    elif [[ "${CARGO_EMAIL-}" ]]; then 
+        PUBLISHER_EMAIL="${CARGO_EMAIL-}"
+    elif [[ "${GIT_AUTHOR_EMAIL-}" ]]; then 
+        PUBLISHER_EMAIL="${GIT_AUTHOR_EMAIL-}"
+    elif [[ "${GIT_COMMITTER_EMAIL-}" ]]; then 
+        PUBLISHER_EMAIL="${GIT_COMMITTER_EMAIL-}"
+    elif git config user.email >/dev/null 2>&1 && [[ "$(git config user.email)" ]]; then 
+        PUBLISHER_EMAIL="$(git config user.email)"
+    elif [[ "${EMAIL-}" ]]; then 
+        PUBLISHER_EMAIL="${EMAIL-}"
+    else
+        fatal "Could not determine an email address to use in your new public identity. Try setting git or setting CARNET_PUBLISHER_EMAIL."
+    fi
+    prompt_yes_no_and_require_yes "Set your public email as '$PUBLISHER_EMAIL'?"
+    
+    # Finding author org
+    PUBLISHER_ORG=""
+    if [[ "${CARNET_PUBLISHER_ORG-}" ]]; then 
+        PUBLISHER_ORG="${CARNET_PUBLISHER_ORG-}"
+        prompt_yes_no_and_require_yes "Set your organization as '$PUBLISHER_ORG'?"
+    elif [[ "${CARNET_PUBLISHER_ORGANIZATION-}" ]]; then 
+        PUBLISHER_ORG="${CARNET_PUBLISHER_ORGANIZATION-}"
+        prompt_yes_no_and_require_yes "Set your organization as '$PUBLISHER_ORG'?"
+    else
+        prompt_yes_no_and_require_yes "Omit specifying an organization in your new identity?"
+    fi
+    
+    # Finding author contry
+    PUBLISHER_COUNTRY=""
+    if [[ "${CARNET_PUBLISHER_COUNTRY-}" ]]; then 
+        PUBLISHER_COUNTRY="${CARNET_PUBLISHER_COUNTRY-}"
+        prompt_yes_no_and_require_yes "Set your publishing country as '$PUBLISHER_COUNTRY'?"
+    else
+        prompt_yes_no_and_require_yes "Omit specifying your country in your new identity?"
+    fi
+    
+    
+    
+    
+    mkdir -p "$USERCONFIGDIR"
+    chmod 700 "$USERCONFIGDIR"
+    printf "%s\n" "Generating new identity keys.."
+    
+    x509_escape() {
+        printf "%s\n" "$1" | sed -E 's/([\/,;])/\\\1/g'
+    }
+    X509_CN="/CN=$(x509_escape "$PUBLISHER_NAME")"
+    X509_EMAIL="/emailAddress=$(x509_escape "$PUBLISHER_EMAIL")"
+    X509_O=""
+    if [[ "$PUBLISHER_ORG" ]]; then
+        X509_O="/O=$(x509_escape "$PUBLISHER_ORG")"
+    fi
+    X509_C=""
+    if [[ "$PUBLISHER_COUNTRY" ]]; then
+        X509_C="/C=$(x509_escape "$PUBLISHER_COUNTRY")"
+    fi
+    
+    if [[ "${CARNET_UNSTABLE_RSA_BITS-}" ]]; then
+        warn "WARNING: rsa key length is set to ${CARNET_UNSTABLE_RSA_BITS}"
+    fi
+    
+    if ! openssl req -x509 \
+                -newkey "rsa:${CARNET_UNSTABLE_RSA_BITS:-8192}" \
+                -utf8 \
+                -nameopt multiline,utf8 \
+                -keyout "$USERCONFIGDIR/identity.key" \
+                -out "$USERCONFIGDIR/identity.cert" \
+                -days 100000 \
+                -sha384 \
+                -nodes \
+                -subj "${X509_CN}${X509_EMAIL}${X509_O}${X509_C}" \
+                -addext "keyUsage = digitalSignature" \
+                -addext "extendedKeyUsage = codeSigning" \
+                1>&2; then
+                #-subj "/" 1>&2; then
+        fatal "Failed to generate a new certificate"
+    fi
+    openssl x509 -pubkey -noout -in "$USERCONFIGDIR/identity.cert" > "$USERCONFIGDIR/identity.pub"
+    chmod 600 "$USERCONFIGDIR/identity.key"
+fi
+
+LOCAL_IDENTITY_CERT_PATH="$USERCONFIGDIR/identity.cert"
+LOCAL_IDENTITY_PUBKEY_PATH="$USERCONFIGDIR/identity.pub"
+LOCAL_IDENTITY_PRIVKEY_PATH="$USERCONFIGDIR/identity.key"
+LOCAL_IDENTITY_FINGERPRINT="$( file_fingerprint "$LOCAL_IDENTITY_CERT_PATH")"
+
+CONFIGURATION_DISABLED_VERIFICATION_PATH="$USERCONFIGDIR/settings/verification.setting"
+CONFIGURATION_DISABLED_SANDBOXING_PATH="$USERCONFIGDIR/settings/sandbox.setting"
+CONFIGURATION_EULA_AGREEMENT_PATH="$USERCONFIGDIR/settings/eula-agreement.setting"
+CONFIGURATION_DISABLED_VERIFICATION="$( if [[ -f "$CONFIGURATION_DISABLED_VERIFICATION_PATH" ]]; then cat "$CONFIGURATION_DISABLED_VERIFICATION_PATH"; fi )"
+CONFIGURATION_DISABLED_SANDBOXING="$( if [[ -f "$CONFIGURATION_DISABLED_SANDBOXING_PATH" ]]; then cat "$CONFIGURATION_DISABLED_SANDBOXING_PATH"; fi )"
+CONFIGURATION_EULA_AGREEMENT="$( if [[ -f "$CONFIGURATION_EULA_AGREEMENT_PATH" ]]; then cat "$CONFIGURATION_EULA_AGREEMENT_PATH"; fi )"
+
+
+if [[ "$CONFIGURATION_EULA_AGREEMENT" != "enabled" ]] && [[ "$COMMAND" != "enable" ]] && [[ "$COMMAND" != "disable" ]]; then
+    printf "
+    ${BOLD-}Welcome to version $PROJECT_VERSION of Carnet!${RESET-}
+
+    This is experimental, alpha-grade software. This software should 
+    not be used in any environment without a proper understanding the 
+    risks involved. 
+    
+    Crate authentication is not ready yet. We strongly encourage you
+    to disable automatic verification by running the following 
+    command:
+    
+        carnet disable verification
+        
+    You can enable it again at any time if you want.
+
+    The terms and conditions governing your use and redistribution of
+    this software impose important limitations on warranty and 
+    liability. These terms and conditions can be viewed by running 
+    the command 'carnet --carnet:legal'. DO NOT USE THIS SOFTWARE if 
+    you do not or cannot agree to the terms and conditions of this 
+    license.
+
+    If you would like to proceed, please type I AGREE in the box 
+    bellow:
+
+    [         ]\r    [ "
+
+    if [[ -t 0 ]] && [[ -t 1 ]] && [[ -t 2 ]]; then
+        if ! prompt_yes_no "I AGREE"; then
+            echo ""
+            fail "Aborted:" "User declined to agree. Aborting."
+        else
+            echo ""
+            configuration_settings "enable" "eula-agreement"
+        fi
+    else
+        fail "Aborted:" "Not connected to a normal tty. Note that you can indicate your agreement by running 'carnet enable eula-agreement' once."
+    fi
+fi
+
+
+if [[ "${CONFIGURATION_DISABLED_VERIFICATION-}" == "disabled" ]]; then
+    debug "Disabling automatic verification because ${CONFIGURATION_DISABLED_VERIFICATION_PATH} is set to disabled."
+    DISABLE_AUTOVERIFICATION="yes"
+fi
+
+if [[ "${CONFIGURATION_DISABLED_SANDBOXING-}" == "disabled" ]]; then
+    debug "Disabling sandbox because ${CONFIGURATION_DISABLED_SANDBOXING_PATH} is set to disabled."
+    DISABLE_SANDBOX="yes"
+fi
+
+
+
+# Starting proper...
+if [[ "$COMMAND" ]]; then
+    if [[ "$COMMAND" == "sandbox-run" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        sandbox "${FILTERED_ARGS[@]}" || exit "$?"
+    
+    elif [[ "$COMMAND" == "enable" ]] || [[ "$COMMAND" == "disable" ]]; then
+        configuration_settings "$COMMAND" "${FILTERED_ARGS[@]}"
+        
+    elif [[ "$COMMAND" == "help" ]]; then
+        printf "$HELP\n" | less -R 1>&2
+    
+    elif [[ "$COMMAND" == "seal" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        if [[ "$KNOWN_CRATE_ORIGIN" != "local" ]]; then
+            fatal "You cannot seal crates you don't own. To own this crate, run $PROJECT_NAME $PROJECT_NAME:own. ($KNOWN_CRATE_PATH)"
+        fi
+        seal
+        verify
+    elif [[ "$COMMAND" == "init" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        crate_root="${UNHANDLED_NON_OPTIONS[0]:-.}"
+        if ! [[ -f "$crate_root/Cargo.toml" ]]; then
+            fatal "'$crate_root' doesn't seem to be a rust crate (no Cargo.toml)"
+        fi
+        initialize_crate "${UNHANDLED_NON_OPTIONS[0]:-.}"
+        trust_crate "${UNHANDLED_NON_OPTIONS[0]:-.}" 
+        own_crate "${UNHANDLED_NON_OPTIONS[0]:-.}"
+    elif [[ "$COMMAND" == "uninit" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        prompt_yes_no_and_require_yes "This command will remove this crate from" \
+                      "your system's list of trusted crates. This"\
+                      "command will also remove any cached"\
+                      "identities. Would you like to proceed?"
+        uninitialize_crate "${UNHANDLED_NON_OPTIONS[0]:-.}"
+        
+    elif [[ "$COMMAND" == "verify" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        verify
+        
+    elif [[ "$COMMAND" == "list-owners" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        if ! [[ "${KNOWN_CRATE_STATE-}" ]] ||  [[ "$KNOWN_CRATE_STATE" != "found" ]]; then
+            fatal "Could not find a registered crate in '$PWD' or any parent directory"
+        fi
+        list_identities "$KNOWN_CRATE_PATH/.carnet/owners"
+        printf "\n"
+    elif [[ "$COMMAND" == "identity" ]]; then
+        printf "Identity = ${LOCAL_IDENTITY_FINGERPRINT}"
+        show_cert_information "$LOCAL_IDENTITY_CERT_PATH" "identity-mode" | sed -E 's/ +/ /g' | sed -E 's/^ //g'
+        
+    elif [[ "$COMMAND" == "list-seal-files" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        generate_crate_seal_list "sha384" "$KNOWN_CRATE_PATH" | tr '\n' '␤' | tr '\0' '\n' | cut -d ' ' -f 1
+        
+    elif [[ "$COMMAND" == "own" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        own_crate "${UNHANDLED_NON_OPTIONS[0]:-$KNOWN_CRATE_PATH}"
+        
+    elif [[ "$COMMAND" == "disown" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        disown_crate "${UNHANDLED_NON_OPTIONS[0]:-$KNOWN_CRATE_PATH}"
+        
+    elif [[ "$COMMAND" == "distrust" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        prompt_yes_no_and_require_yes "This command will remove this crate from" \
+                      "your system's list of trusted crates. This"\
+                      "command will also remove any cached" \
+                      "identities. Would you like to proceed?"
+        distrust_crate "${UNHANDLED_NON_OPTIONS[0]:-$KNOWN_CRATE_PATH}"
+        
+    elif [[ "$COMMAND" == "edit" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        NEW_DEV_SESSION="yes"
+        refresh_dev_session
+
+    elif [[ "$COMMAND" == "done" ]]; then
+        KNOWN_CRATE_PATH="."
+        locate_known_crate_from_the_inside_and_set_up_global_variables
+        clear_dev_session
+    
+    elif [[ "$COMMAND" == "version" ]]; then
+        echo "$PROJECT_NAME $PROJECT_VERSION ($PROJECT_DATE NCA)"
+        sandbox "$CARGO_PATH" version
+    else
+        fatal "INTERNAL BUG: Unknown $PROJECT_NAME command"
+    fi
+else
+    KNOWN_CRATE_PATH="."
+    locate_known_crate_from_the_inside_and_set_up_global_variables
+    refresh_dev_session
+    
+    if [[ "${UNHANDLED_NON_OPTIONS[0]-}" == "new" ]]; then
+        
+        sandbox "$CARGO_PATH" "${FILTERED_ARGS[@]}" || exit "$?"
+        
+        if ! [[ "${UNHANDLED_NON_OPTIONS[1]-}" ]] || ! [[ -f "${UNHANDLED_NON_OPTIONS[1]}/Cargo.toml" ]]; then 
+            fatal "Your new crate has been successfully setup by cargo, \
+                   but carnet could not initialize it automatically because \
+                   it couldn't find the new directory \
+                   '${UNHANDLED_NON_OPTIONS[1]-}'. You can initialize your \
+                   crate manually by running $PROJECT_NAME carnet:init inside your crate."
+        fi
+        initialize_crate "${UNHANDLED_NON_OPTIONS[1]}"
+        trust_crate "${UNHANDLED_NON_OPTIONS[1]}"
+        own_crate "${UNHANDLED_NON_OPTIONS[1]}"
+    elif [[ "${UNHANDLED_NON_OPTIONS[0]-}" == "version" ]]; then
+        echo "$PROJECT_NAME $PROJECT_VERSION ($PROJECT_DATE NCA)"
+        sandbox "$CARGO_PATH" version
+    elif [[ "${UNHANDLED_NON_OPTIONS[0]-}" == "help" ]]; then
+        sandbox "$CARGO_PATH" "${FILTERED_ARGS[@]}"
+        printf "%s\n\n" "See '$PROJECT_NAME $PROJECT_NAME:help' or '$PROJECT_NAME --$PROJECT_NAME:help' for more information about the options and commands that are specific to Carnet."
+    else
+        if ! [[ "${KNOWN_CRATE_STATE-}" ]] ||  [[ "$KNOWN_CRATE_STATE" != "found" ]]; then
+            fatal "Could not find a registered crate in '$PWD' or any parent directory"
+        fi
+        if [[ "$DISABLE_AUTOVERIFICATION" != "yes" ]]; then
+            verify
+        else
+            ignored_step_message "Verifying" "Automatic verification is disabled"
+        fi
+        sandbox "$CARGO_PATH" "${FILTERED_ARGS[@]}" || exit "$?"
+    fi
+fi
+
+exit 0
+
+
