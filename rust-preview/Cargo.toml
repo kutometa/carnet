@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Kutometa <support@ka.com.kw>"]
 edition = "2018"
 license = "LGPL-3.0-only"
-description = "Carnet is a transparent wrapper for Cargo that implements a number of important security features currently missing from it. Carent is meant as a temporary fix until Cargo gains these features."
+description = "Carnet is a transparent wrapper for Cargo that implements a number of important security features currently missing from it. Carnet is meant as a temporary fix until Cargo gains these features."
 homepage = "https://www.ka.com.kw"
 
 [dependencies]
