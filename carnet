@@ -3,8 +3,8 @@
 
        PROJECT_NAME="carnet"
       PROJECT_TITLE="Carnet: Bureaucracy for Cargo" 
-    PROJECT_VERSION="0.3.5"
-       PROJECT_DATE="2021-05-21"
+    PROJECT_VERSION="0.3.6"
+       PROJECT_DATE="2021-05-24"
           COPYRIGHT="Copyright © 2021 Kutometa SPC, Kuwait"
         DESCRIPTION="Carnet is a small tool that imposes additional 
                      security constraints on Rust's official package 
@@ -1534,72 +1534,69 @@ elif [[ "$COMMAND" == "legal" ]]; then
 fi
 
 if ! [[ -d "$USERCONFIGDIR" ]]; then
-    printf "%s\n" "Could not find identity directory '$USERCONFIGDIR'. Setting up new identity..."
-    printf "%s\n" "The following information cannot be changed without generating a new identity: "
+    debug "Could not find identity directory '$USERCONFIGDIR'. Setting up new identity..."
+    printf "
+    This appears to be the first time Carnet runs on this system. 
+    Before you continue, you need to provide some information to 
+    generate a new identity for you. This information is shown to 
+    other users when they attempt to verify your crates for the first
+    time.
     
-    # Finding author name
-    PUBLISHER_NAME="" 
-    if [[ "${CARNET_PUBLISHER_NAME-}" ]]; then 
-        PUBLISHER_NAME="${CARNET_PUBLISHER_NAME-}"
-    elif [[ "${CARGO_NAME-}" ]]; then 
-        PUBLISHER_NAME="${CARGO_NAME-}"
-    elif [[ "${GIT_AUTHOR_NAME-}" ]]; then 
-        PUBLISHER_NAME="${GIT_AUTHOR_NAME-}"
-    elif [[ "${GIT_COMMITTER_NAME-}" ]]; then 
-        PUBLISHER_NAME="${GIT_COMMITTER_NAME-}"
-    elif git config user.name >/dev/null 2>&1 && [[ "$(git config user.name)" ]]; then 
-        PUBLISHER_NAME="$(git config user.name)"
-    elif [[ "${USER-}" ]]; then 
-        PUBLISHER_NAME="${USER-}"
-    elif [[ "${USERNAME-}" ]]; then 
-        PUBLISHER_NAME="${USERNAME-}"
-    elif [[ "${NAME-}" ]]; then 
-        PUBLISHER_NAME="${NAME-}"
-    else
-        fatal "Could not determine a name to use for your new public identity. Try setting git or setting CARNET_PUBLISHER_NAME."
-    fi
-    prompt_yes_no_and_require_yes "Set your public name as '$PUBLISHER_NAME'?"
+    This information cannot be changed once the identity has been 
+    generated.
+    "
     
-    # Finding author email
-    PUBLISHER_EMAIL=""
-    if [[ "${CARNET_PUBLISHER_EMAIL-}" ]]; then 
-        PUBLISHER_EMAIL="${CARNET_PUBLISHER_EMAIL-}"
-    elif [[ "${CARGO_EMAIL-}" ]]; then 
-        PUBLISHER_EMAIL="${CARGO_EMAIL-}"
-    elif [[ "${GIT_AUTHOR_EMAIL-}" ]]; then 
-        PUBLISHER_EMAIL="${GIT_AUTHOR_EMAIL-}"
-    elif [[ "${GIT_COMMITTER_EMAIL-}" ]]; then 
-        PUBLISHER_EMAIL="${GIT_COMMITTER_EMAIL-}"
-    elif git config user.email >/dev/null 2>&1 && [[ "$(git config user.email)" ]]; then 
-        PUBLISHER_EMAIL="$(git config user.email)"
-    elif [[ "${EMAIL-}" ]]; then 
-        PUBLISHER_EMAIL="${EMAIL-}"
-    else
-        fatal "Could not determine an email address to use in your new public identity. Try setting git or setting CARNET_PUBLISHER_EMAIL."
-    fi
-    prompt_yes_no_and_require_yes "Set your public email as '$PUBLISHER_EMAIL'?"
-    
-    # Finding author org
-    PUBLISHER_ORG=""
-    if [[ "${CARNET_PUBLISHER_ORG-}" ]]; then 
-        PUBLISHER_ORG="${CARNET_PUBLISHER_ORG-}"
-        prompt_yes_no_and_require_yes "Set your organization as '$PUBLISHER_ORG'?"
-    elif [[ "${CARNET_PUBLISHER_ORGANIZATION-}" ]]; then 
-        PUBLISHER_ORG="${CARNET_PUBLISHER_ORGANIZATION-}"
-        prompt_yes_no_and_require_yes "Set your organization as '$PUBLISHER_ORG'?"
-    else
-        prompt_yes_no_and_require_yes "Omit specifying an organization in your new identity?"
+    if ! [[ "${CARNET_PUBLISHER_NAME-}" ]]; then 
+        while true; do
+            printf "
+    What is your name?
+
+    [                                                             ]\r    [ "
+            read -r CARNET_PUBLISHER_NAME
+            if [[ "$CARNET_PUBLISHER_NAME" ]]; then
+                break
+            else
+                printf "\n"
+                warn "A name is needed to generate a new Identity."
+            fi
+        done
     fi
     
-    # Finding author contry
-    PUBLISHER_COUNTRY=""
-    if [[ "${CARNET_PUBLISHER_COUNTRY-}" ]]; then 
-        PUBLISHER_COUNTRY="${CARNET_PUBLISHER_COUNTRY-}"
-        prompt_yes_no_and_require_yes "Set your publishing country as '$PUBLISHER_COUNTRY'?"
-    else
-        prompt_yes_no_and_require_yes "Omit specifying your country in your new identity?"
+    
+    if ! [[ "${CARNET_PUBLISHER_EMAIL-}" ]]; then 
+        while true; do
+            printf "
+    What email address would you like to include?
+
+    [                                                             ]\r    [ "
+            read -r CARNET_PUBLISHER_EMAIL
+            if [[ "$CARNET_PUBLISHER_EMAIL" ]]; then
+                break
+            else
+                printf "\n"
+                warn "An email address is needed to generate a new Identity."
+            fi
+        done
     fi
     
+    
+    if ! [[ "${CARNET_PUBLISHER_ORG-}" ]]; then 
+    printf "
+    What is the name of your organization? (You can leave this empty)
+
+    [                                                             ]\r    [ "
+    read -r CARNET_PUBLISHER_ORG
+    fi
+    
+    
+    if ! [[ "${CARNET_PUBLISHER_COUNTRY-}" ]]; then 
+    printf "
+    What is the two-letter ISO code of your country? (You can leave 
+    this empty)
+
+    [                                                             ]\r    [ "
+    read -r CARNET_PUBLISHER_COUNTRY
+    fi
     
     
     
@@ -1610,15 +1607,15 @@ if ! [[ -d "$USERCONFIGDIR" ]]; then
     x509_escape() {
         printf "%s\n" "$1" | sed -E 's/([\/,;])/\\\1/g'
     }
-    X509_CN="/CN=$(x509_escape "$PUBLISHER_NAME")"
-    X509_EMAIL="/emailAddress=$(x509_escape "$PUBLISHER_EMAIL")"
+    X509_CN="/CN=$(x509_escape "$CARNET_PUBLISHER_NAME")"
+    X509_EMAIL="/emailAddress=$(x509_escape "$CARNET_PUBLISHER_EMAIL")"
     X509_O=""
-    if [[ "$PUBLISHER_ORG" ]]; then
-        X509_O="/O=$(x509_escape "$PUBLISHER_ORG")"
+    if [[ "$CARNET_PUBLISHER_ORG" ]]; then
+        X509_O="/O=$(x509_escape "$CARNET_PUBLISHER_ORG")"
     fi
     X509_C=""
-    if [[ "$PUBLISHER_COUNTRY" ]]; then
-        X509_C="/C=$(x509_escape "$PUBLISHER_COUNTRY")"
+    if [[ "$CARNET_PUBLISHER_COUNTRY" ]]; then
+        X509_C="/C=$(x509_escape "$CARNET_PUBLISHER_COUNTRY")"
     fi
     
     if [[ "${CARNET_UNSTABLE_RSA_BITS-}" ]]; then

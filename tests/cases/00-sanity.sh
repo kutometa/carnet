@@ -78,7 +78,7 @@ environment_one() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA and set up new user at the same time"
     ACTIVE_USER="userA" 
-    run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "[LINENO:$LINENO]" "Construct a new cate through carnet"
     ACTIVE_USER="userA" 
@@ -157,7 +157,7 @@ environment_one() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user 'userB' and set up new user at the same time"
     ACTIVE_USER="userB"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "[LINENO:$LINENO]" "Test with new user 'userB' which should propmt the user to trust the new crate. we will decline first"
     ACTIVE_USER="userB"
@@ -203,11 +203,11 @@ environment_one() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user 'userB' and set up new user at the same time"
     ACTIVE_USER="userC"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "[LINENO:$LINENO]" "But what's this! In comes C, steathely adding his key to the whitelist directory, will he succeed? Let's find out..."
     ACTIVE_USER="userC"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" test   < <(printf "yes\nyes\nyes\nyes\n"; echo "yes" ) # To generate the pub key for C
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" test   < <(echo "yes" ) # To generate the pub key for C
     C_CERT="../../configs/$ACTIVE_USER/identity.cert"
     C_IDENT="$(sha384sum -- "$C_CERT" | cut -d ' ' -f 1 | head -c 20)"
     run "0" cp "../../configs/$ACTIVE_USER/identity.cert" ".carnet/owners/$C_IDENT.cert"

@@ -75,7 +75,7 @@ testing_logic() {
     export CARNET_PUBLISHER_COUNTRY="KW"
     
     #ACTIVE_USER="ORIGINAL_OWNER" 
-    #run "107" "$CARNET_PATH" --config-dir="config-$ACTIVE_USER" init < <(printf "yes\nyes\nyes\nyes\n")
+    #run "107" "$CARNET_PATH" --config-dir="config-$ACTIVE_USER" init 
     
     cargo new "binary-1"
     cd binary-1
@@ -83,7 +83,7 @@ testing_logic() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user setup at the same time"
     ACTIVE_USER="ORIGINAL_OWNER"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "ORIGINAL_OWNER new crate"
     ACTIVE_USER="ORIGINAL_OWNER" 
@@ -115,7 +115,7 @@ testing_logic() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user setup at the same time"
     ACTIVE_USER="CONSUMER"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "CONSUMER regester crate"
     ACTIVE_USER="CONSUMER" 
@@ -123,7 +123,7 @@ testing_logic() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user setup at the same time"
     ACTIVE_USER="CO-OWNER"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "CO-OWNER regester crate"
     ACTIVE_USER="CO-OWNER" 

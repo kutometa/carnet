@@ -76,7 +76,7 @@ testing_logic() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA and set up new user at the same time"
     ACTIVE_USER="ORIGINAL_OWNER" 
-    run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     ACTIVE_USER="ORIGINAL_OWNER" 
     run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" new "main1"

@@ -76,7 +76,7 @@ testing_logic() {
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user setup at the same time"
     ACTIVE_USER="ORIGINAL_OWNER"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     -- "[LINENO:$LINENO]" "ORIGINAL_OWNER new crate"
     ACTIVE_USER="ORIGINAL_OWNER" 
@@ -122,7 +122,7 @@ DD
     
     -- "[LINENO:$LINENO]" "Agree to EULA for new user setup at the same time"
     ACTIVE_USER="USER"
-    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  < <(printf "yes\nyes\nyes\nyes\n")
+    run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" enable "eula-agreement"  
     
     ACTIVE_USER="USER" 
     run "0" "$CARNET_PATH" --carnet:config-dir="../../configs/$ACTIVE_USER" test < <(printf "yes\n")

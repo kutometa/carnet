@@ -4,6 +4,26 @@ This file documents noteworthy changes between each version of
 Carnet.
 
 
+### Noteworthy changes in v0.3.6 (2021-05-24)
+
+This release revamps the identity generation process for new users. 
+Now new users can enter information directly into Carnet instead of 
+having to set global environment variables.
+
+
+##### Breaking Changes
+
+* Carnet input now requires direct input if relevant environment 
+  variables are not set.
+
+##### New Features
+
+* Revamped identity generation for new users
+
+##### Bug Fixes
+
+* None that we're aware of.
+
 
 ### Noteworthy changes in v0.3.5 (2021-05-23)
 
