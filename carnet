@@ -686,7 +686,7 @@ swapname() {
     
     // Ubuntu 18.04 doesn't define this constant
     // Obtained from '/usr/include/linux/fs.h'
-    // Always test first! Might not always corispond to userland 
+    // Always test first! Might not always correspond to userland 
     // RENAME_EXCHANGE
     int local_RENAME_EXCHANGE = (1 << 1);
     
