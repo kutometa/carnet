@@ -21,7 +21,7 @@ Carnet imposes two types of security constraints on Cargo:
 Carnet is meant as a temporary solution until Cargo gains the ability to 
 impose these constraints on its own.
 
-## Installing & updating
+## Installing & Updating
 
 If your system is compatible with the FHS standard, you can install 
 Carnet system-wide by downloading this repository and running the 
@@ -111,7 +111,7 @@ Run `carnet carnet:help` or `carnet --carnet:help` for more
 information.
 
 
-## History & future plans
+## History & Future Plans
 
 We originally wrote this version of Carnet to only serve as a 
 prototype for when we wanted to implement Carnet more robustly 
@@ -120,8 +120,22 @@ published Carnet as-is. Our decision was in part because we couldn't
 guarantee when this rewrite would occur. We also hope to gather 
 enough feedback to help us make a better Carnet when the rewrite 
 eventually takes place.
+
+
+## Feedback is Important
+
+Since we don't include any telemetry in Carnet, we rely on your 
+feedback to gauge how successful this project is. If you use Carnet 
+and don't mind sharing this fact publicly, let us know by leaving a 
+comment on the Github issue here: 
+https://github.com/kutometa/carnet/issues/3
+
+Alternatively, you can let us know by sending a short email to 
+support@ka.com.kw.
+
+
     
-## Support & licensing
+## Support & Licensing
 
 Official commercial support and custom licensing are available 
 directly from the authors of this software. Please send your 

@@ -1020,7 +1020,7 @@ verify() {
     step_message "Verifying" "Checking file signatures ($INSECURE_KNOWN_CRATE_PATH)"
     
     if ! [[ -f "$INSECURE_KNOWN_CRATE_PATH/.$PROJECT_NAME/seal/sealed" ]]; then
-        fatal "Cannot verify crate because it wasn't sealed."
+        fatal "Cannot verify crate because it wasn't sealed. See --carnet:help for more information."
     fi
     
     local CACHED_WHITELIST_DIR="$USERCONFIGDIR/known/$KNOWN_CRATE_PATH_HASH/owners"
