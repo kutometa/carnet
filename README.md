@@ -134,6 +134,10 @@ Alternatively, you can let us know by sending a short email to
 support@ka.com.kw.
 
 
+## Contributing
+
+Please see `CONTRIBUTING.md` in the root of this repository.
+
     
 ## Support & Licensing
 
