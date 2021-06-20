@@ -1,15 +1,17 @@
 #!/bin/bash
 
+# Assemble.sh recursivly collapses simple uses of `source` in bash 
+# files. To work correctly, this script assumes:
+#
+# 1. `source` is argumentless
+# 2. No cycles exist between source files.
+# 
+# Warning: This script will recurse infinitily if there is a cycle. 
+#          This can lead to OOM conditions or depletion of disk 
+#          space.
+
 set -eu
 set -H
-
-# beware! this script is retarded.
-#
-# 1. Assumes source is argumentless
-# 2. Does not parse source's arguments or attempt to handle them in any way
-# 3. Will recurse infinitly if given a cyclic sourcing is encounterd.
-# 
-# treat this script with care. 
 
 DELEMETER="$(head -c 8 /dev/urandom | sha384sum | cut -f 1 -d ' ')SOURCESOURCE "
 assemble() {

@@ -1,6 +1,6 @@
-Thank you for your interest in contributing to this project. Please 
-read this document carefully before you begin working on a feature 
-you intend to contribute back to this repository.
+Thank you for your interest in contributing to our project. Please 
+read this document carefully before you start working on a feature 
+that you intend to contribute back to this repository.
 
 
 # Table of Contents
@@ -12,9 +12,9 @@ you intend to contribute back to this repository.
 
 # Building
 
-Carnet is developed as a modular bash script, where the main script 
-imports subscripts which in turn import their own subscripts and so 
-on. 
+Carnet is developed as a set of partial bash files that require 
+assembly into a single executable file before Carnet can be used 
+normally. 
 
 You can assemble carnet by using `./etc/assemble.sh`. To assemble 
 carnet for testing or redistribution, run the following command in 
@@ -28,17 +28,17 @@ chmod +x ./carnet
 
 # Testing
 
-Carnet is provided with a test suite that can be used to check for 
-regressions. To run the test suite, you first build the script then 
-run the following command in the root of this repository.
+Carnet is bundled with a test suite that can be used to check for 
+regressions and other issues. To run the test suite, you first build 
+the script then run the following command in the root of this 
+repository.
 
 ```sh
 bash tests/carnet-test.sh
 ```
 
-To run all tests (including ignored tests that can burden third-party
-resources like crates.io), set the environment variable 
-`TEST_IGNORED` to `yes`:
+To run all tests, including those ignored by default, set the 
+environment variable `TEST_IGNORED` to `yes`:
 
 ```sh
 TEST_IGNORED=yes bash tests/carnet-test.sh
@@ -47,16 +47,16 @@ TEST_IGNORED=yes bash tests/carnet-test.sh
 
 # Contributing
 
-We classify contributions into one of two categories:
+We classify contributions into one of the following two categories:
 
-1. "Major" contributions where a substantial amount of code or other 
+1. **Major** contributions where a substantial amount of code or other 
    copyrightable material is provided or modified.
 
-2. "Minor" contributions that do not meet the threshold of 
+2. **Minor** contributions that do not meet the threshold of 
    copyrightability. (e.g Typographical errors, One-line fixes, etc)
 
-If you are not sure whether your contribution is major or minor, 
-open an issue and ask.
+If you are not sure whether your contribution will be treated as 
+major or minor, please open an issue and ask.
 
 
 ### Major Contributions
@@ -64,25 +64,25 @@ open an issue and ask.
 To have a major contribution merged into this project, please follow 
 these steps:
 
-1. Before you start work on your contribution, open a new issue to
-   see if your contribution is compatible with the goals and 
-   constraints of this project. Otherwise, we might not be able to
-   accept your contribution.
+1. Before you start working on your contribution, open a new issue to 
+   determine if your contribution is compatible with this project's 
+   goals and constraints.
    
-2. Fill and submit the Kutometa Contributor License Agreement if you 
-   have not done so already. This agreement grants us a wider license
-   to your contribution. This agreement does not assign your rights 
-   to us.
+2. Fill and submit the Kutometa Contributor License Agreement form if
+   you haven't done so already. This agreement grants us the ability 
+   to license your contribution for commercial use and to address 
+   legal issues as they arise. This agreement does not assign your 
+   copyright to us.
    
-3. Start implementing your contribution once you have determined that
-   no technical or legal issue prevents us from accepting your 
-   contribution.
+3. Start implementing your contribution.
    
-4. Once finished, run the test suite and make sure all tests pass. 
-   Running the _full_ test suite just before submitting a pull 
-   request is highly recommended but not required at this time.
+4. (Optional) add tests to the test suite.
 
-5. Update your issue and submit a patch or a pull request.
+5. Run the test suite and make sure all tests pass. 
+ 
+6. (Optional) Run the _full_ test suite and make sure all tests pass. 
+   
+7. Update your issue and submit a patch or a pull request.
    
 
 ### Minor Contributions
@@ -91,4 +91,6 @@ Minor contributions are exempt from the steps required for major
 contributions. We still recommend running the test suite especially 
 when code is modified.
 
+# Questions
 
+Open a new issue!

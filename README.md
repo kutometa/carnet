@@ -136,7 +136,8 @@ support@ka.com.kw.
 
 ## Contributing
 
-Please see `CONTRIBUTING.md` in the root of this repository.
+Please see [CONTRIBUTING.en.md](./CONTRIBUTING.en.md) in the root of 
+this repository.
 
     
 ## Support & Licensing
